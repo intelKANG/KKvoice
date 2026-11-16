@@ -70,8 +70,8 @@ struct RemoteIllustration: View {
         }
         .aspectRatio(Self.canvasWidth / Self.canvasHeight, contentMode: .fit)
         .frame(
-            width: compact ? 104 : 176,
-            height: compact ? 302 : 512
+            width: compact ? 68 : 148,
+            height: compact ? 198 : 430
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Google TV 语音遥控器")

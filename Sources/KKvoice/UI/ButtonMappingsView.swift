@@ -6,7 +6,7 @@ import VoiceSessions
 struct ButtonMappingsView: View {
     @ObservedObject var model: AppModel
     @State private var draft: ButtonMappings
-    @State private var selectedButtonID: String = "07"
+    @State private var selectedButtonID: String
     @State private var saveFeedback: String? = nil
 
     private let customShortcutChoice = "__shortcut"
@@ -48,6 +48,7 @@ struct ButtonMappingsView: View {
     init(model: AppModel) {
         self.model = model
         self._draft = State(initialValue: model.mappings)
+        self._selectedButtonID = State(initialValue: model.lastPressedButtonID?.uppercased() ?? "07")
     }
 
     private var hasUnsavedChanges: Bool {
@@ -55,17 +56,26 @@ struct ButtonMappingsView: View {
     }
 
     var body: some View {
-        PageScaffold(
-            title: "按键映射",
-            subtitle: "点击中央遥控器按键或两侧卡片，自定义 Google TV 遥控器在 macOS 上的动作。",
-            scrollable: true
-        ) {
-            statusBadge
-        } content: {
-            VStack(alignment: .leading, spacing: DS.s16) {
-                switcherBannerCard
-                mappingWorkbench
-                bottomToolbarCard
+        VStack(spacing: 0) {
+            PageScaffold(
+                title: "按键映射",
+                subtitle: "点击中央遥控器按键或两侧卡片，自定义 Google TV 遥控器在 macOS 上的动作。",
+                scrollable: true
+            ) {
+                statusBadge
+            } content: {
+                VStack(alignment: .leading, spacing: DS.s12) {
+                    switcherBannerCard
+                    mappingWorkbench
+                }
+            }
+
+            stickyBottomBar
+        }
+        .background(DS.windowBackground)
+        .onAppear {
+            if let id = model.lastPressedButtonID?.uppercased() {
+                selectedButtonID = id
             }
         }
         .onChange(of: model.mappings) { newValue in
@@ -94,18 +104,18 @@ struct ButtonMappingsView: View {
     }
 
     private var switcherBannerCard: some View {
-        Card(padding: DS.s12) {
+        Card(padding: 10) {
             HStack(alignment: .center, spacing: DS.s12) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(Color.accentColor.opacity(0.12))
-                        .frame(width: 34, height: 34)
+                        .frame(width: 30, height: 30)
                     Image(systemName: "rectangle.stack.fill")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.accentColor)
                 }
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text("左右键切换应用")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
@@ -114,9 +124,9 @@ struct ButtonMappingsView: View {
                             ? "已启用：按方向左 / 方向右直接唤起并浏览 macOS 应用切换器；关闭后可单独设置左右键动作。"
                             : "已关闭：方向左与方向右可自由映射为方向键、快捷键或打开指定应用。"
                     )
-                    .font(.footnote)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(1)
                 }
 
                 Spacer(minLength: DS.s12)
@@ -135,9 +145,9 @@ struct ButtonMappingsView: View {
     // MARK: - Center Remote + Two-Column Workbench
 
     private var mappingWorkbench: some View {
-        HStack(alignment: .center, spacing: DS.s24) {
+        HStack(alignment: .center, spacing: DS.s16) {
             // Left column (7 buttons)
-            VStack(spacing: DS.s8) {
+            VStack(spacing: 6) {
                 ForEach(Self.leftColumnItems) { item in
                     buttonRowCard(for: item, side: .left)
                 }
@@ -146,10 +156,10 @@ struct ButtonMappingsView: View {
 
             // Center remote stage
             centerRemoteStage
-                .frame(width: 204)
+                .frame(width: 168)
 
             // Right column (8 items including fixed voice card)
-            VStack(spacing: DS.s8) {
+            VStack(spacing: 6) {
                 ForEach(Self.rightColumnItems) { item in
                     buttonRowCard(for: item, side: .right)
                 }
@@ -165,7 +175,7 @@ struct ButtonMappingsView: View {
     }
 
     private var centerRemoteStage: some View {
-        VStack(spacing: DS.s12) {
+        VStack(spacing: DS.s8) {
             ZStack {
                 // Soft Google-TV inspired stage aura behind the remote
                 Capsule(style: .circular)
@@ -180,7 +190,7 @@ struct ButtonMappingsView: View {
                             endPoint: .bottom
                         )
                     )
-                    .frame(width: 192, height: 524)
+                    .frame(width: 162, height: 444)
                     .overlay(
                         Capsule(style: .circular)
                             .strokeBorder(DS.border, lineWidth: 1)
@@ -217,13 +227,14 @@ struct ButtonMappingsView: View {
             return actionSummary(for: selectedButtonID)
         }()
 
-        return HStack(spacing: 6) {
+        return HStack(spacing: 5) {
             Image(systemName: symbol)
-                .font(.caption.weight(.semibold))
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color.accentColor)
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.primary)
+                .fixedSize(horizontal: true, vertical: false)
             Text("·")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -232,8 +243,8 @@ struct ButtonMappingsView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
         .background(
             Capsule(style: .continuous)
                 .fill(DS.cardBackground)
@@ -263,32 +274,35 @@ struct ButtonMappingsView: View {
     private func voiceFixedCard(for item: ButtonMeta, side: ColumnSide) -> some View {
         let isSelected = (selectedButtonID == item.id)
 
-        return Card(padding: 10, isHighlighted: isSelected) {
-            HStack(spacing: 10) {
+        return Card(padding: 8, isHighlighted: isSelected) {
+            HStack(spacing: 8) {
                 iconBadge(symbol: item.symbol, isSelected: isSelected, isMuted: false)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
                         Text(item.name)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
+                            .fixedSize(horizontal: true, vertical: false)
                         Text("固定")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(Color.accentColor)
                             .padding(.horizontal, 6)
-                            .padding(.vertical, 1.5)
+                            .padding(.vertical, 1)
                             .background(
                                 Capsule(style: .continuous)
                                     .fill(Color.accentColor.opacity(0.14))
                             )
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     Text("按一次开始，再按一次结束（不可映射）")
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.82)
                 }
 
-                Spacer(minLength: 4)
+                Spacer(minLength: 0)
             }
             .contentShape(Rectangle())
             .onTapGesture {
@@ -309,51 +323,35 @@ struct ButtonMappingsView: View {
         let isNone = !lockedBySwitcher && currentAction.target == "none"
 
         return Card(
-            padding: 10,
+            padding: 8,
             isHighlighted: isSelected,
             isDisabled: lockedBySwitcher
         ) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 iconBadge(
                     symbol: item.symbol,
                     isSelected: isSelected,
                     isMuted: isNone || lockedBySwitcher
                 )
 
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(item.name)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-
-                        if lockedBySwitcher {
-                            Text("应用切换")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1)
-                                .background(
-                                    Capsule(style: .continuous)
-                                        .fill(DS.subtleFill)
-                                )
-                        }
-                    }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(item.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .layoutPriority(2)
 
                     if lockedBySwitcher {
-                        Text("已启用左右键切换应用，关闭后可自定义。")
-                            .font(.caption)
+                        Text("已启用切换应用，关闭后可自定义")
+                            .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
-                    } else {
-                        Text(actionCategorySubtitle(for: currentAction))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
                 }
 
-                Spacer(minLength: 6)
+                Spacer(minLength: 4)
 
                 actionMenu(for: item.id, lockedBySwitcher: lockedBySwitcher)
             }
@@ -378,10 +376,10 @@ struct ButtonMappingsView: View {
                         ? Color.accentColor
                         : (isMuted ? DS.subtleFill : Color.accentColor.opacity(0.12))
                 )
-                .frame(width: 30, height: 30)
+                .frame(width: 26, height: 26)
 
             Image(systemName: symbol)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(
                     isSelected
                         ? Color.white
@@ -475,11 +473,11 @@ struct ButtonMappingsView: View {
                 .font(.caption.weight(.medium))
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .frame(width: 128, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .menuStyle(.borderedButton)
         .controlSize(.small)
-        .frame(width: 146)
+        .frame(width: lockedBySwitcher ? 96 : 134)
         .disabled(lockedBySwitcher)
         .simultaneousGesture(
             TapGesture().onEnded {
@@ -490,10 +488,12 @@ struct ButtonMappingsView: View {
         )
     }
 
-    // MARK: - Bottom Bar
+    // MARK: - Sticky Bottom Bar
 
-    private var bottomToolbarCard: some View {
-        Card(padding: DS.s12) {
+    private var stickyBottomBar: some View {
+        VStack(spacing: 0) {
+            CardDivider()
+
             HStack(alignment: .center, spacing: DS.s12) {
                 HStack(spacing: DS.s8) {
                     StatusDot(tone: hasUnsavedChanges ? .warning : .connected, size: 7)
@@ -525,6 +525,9 @@ struct ButtonMappingsView: View {
                 .keyboardShortcut(.defaultAction)
                 .help("校验并保存当前按键映射")
             }
+            .padding(.horizontal, DS.s24)
+            .padding(.vertical, 10)
+            .background(DS.cardBackground)
         }
     }
 
@@ -537,7 +540,6 @@ struct ButtonMappingsView: View {
             let cardItems = prefs.filter { $0.kind == .cardBounds }
 
             Canvas { context, _ in
-                // Draw subtle guide curves first, then selected curve on top
                 for item in cardItems where item.id != selectedButtonID {
                     drawConnector(for: item, remoteRect: remoteRect, in: geo, isSelected: false, context: &context)
                 }
@@ -634,26 +636,6 @@ struct ButtonMappingsView: View {
             return "新建闪念笔记（测试）"
         default:
             return ActionCatalog.fixed.first(where: { $0.target == action.target })?.label ?? action.target
-        }
-    }
-
-    private func actionCategorySubtitle(for action: ButtonAction) -> String {
-        let desired = desiredMenuChoice(for: action)
-        switch desired {
-        case "none":
-            return "未绑定动作"
-        case customShortcutChoice:
-            return "自定义键盘快捷键"
-        case chooseAppChoice:
-            return action.target.hasPrefix("openAppFocus:") ? "打开应用并聚焦输入框" : "启动 macOS 应用"
-        case chooseFileChoice:
-            return "打开本机文件"
-        case typeTextChoice:
-            return "输入预设文字并发送 Enter"
-        case snapnoteChoice:
-            return "通过 MCP 新建闪念笔记"
-        default:
-            return "预设系统 / 键盘动作"
         }
     }
 
