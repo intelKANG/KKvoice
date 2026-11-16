@@ -7,9 +7,11 @@
 ## 功能亮点
 
 - **语音遥控器当麦克风**：按遥控器语音键（或 Mac 键盘唤醒键）即可收音，将音频实时转发至虚拟麦克风 `KKvoice Mic`，直接用于 Vokie 等语音输入软件。
-- **自动切换音源**：**待机时不采集任何麦克风**；遥控器连接就绪时使用遥控器麦克风，断开或休眠时按唤醒键收音会自动切换为所选的 Mac 物理麦克风（仅在收音期间按需开启，收音结束立即释放）。
+- **自动切换音源（待机零采集）**：**待机时不采集任何麦克风**；遥控器连接就绪时使用遥控器麦克风，断开或休眠时按唤醒键收音会自动切换为所选的 Mac 物理麦克风（仅在收音期间按需开启，收音结束立即释放）。
+- **智能蓝牙搜索与零功耗离线待机**：启动与遥控器按键唤醒时自动搜索秒连；带 MacBook 外出（遥控器不在身边）时自动停止蓝牙扫描进入**零功耗待机**，无缝使用 Mac 麦克风，回家按遥控器任意键通过系统 HID 事件瞬间自动重连。
 - **按键映射**：直观的遥控器键位视图，支持将方向键、确认、返回、Home、YouTube、Netflix、静音、音量、电源、信源等按键映射为系统快捷键、打开/切换应用、输入文字或系统控制。
 - **闪念笔记联动**：一键触发闪念笔记（SnapNote）新建笔记，并自动添加自定义标签（1–20 字，默认「闪念」）。
+- **应用内一键更新**：支持启动/定时自动检查 GitHub 新版本、弹窗提醒、一键下载校验签名并替换重启，可在「通用」页开启或关闭「自动检查更新」与「自动安装更新」。
 
 ## 界面截图
 
@@ -40,10 +42,10 @@
 
 ## 使用步骤
 
-1. 在 macOS「系统设置 → 蓝牙」中配对 Google TV / Chromecast 语音遥控器。
-2. 打开 KKvoice，按提示一键安装虚拟麦克风 `KKvoice Mic`，然后将语音输入软件（如 Vokie）的麦克风输入设为 `KKvoice Mic`。
-3. 在「连接」页设置语音输入软件的触发快捷键与备用 Mac 麦克风。
-4. 按下遥控器语音键（或键盘唤醒键）开始说话，或在「按键」页自定义各个遥控器按键功能。
+1. **首次蓝牙配对**：首次连接新 Mac 时，同时长按遥控器**「返回 `←` + 主页 `🏠`」3–5 秒**至指示灯闪烁，在 macOS「系统设置 → 蓝牙」中连接 `Chromecast Remote`（连接页亦内置配对提示与「蓝牙设置」快捷入口）。
+2. **设置虚拟麦克风**：打开 KKvoice，按提示一键安装虚拟麦克风 `KKvoice Mic`，然后将语音输入软件（如 Vokie）的麦克风输入设为 `KKvoice Mic`。
+3. **配置快捷键与备用麦**：在「连接」页设置语音输入软件的触发快捷键与备用 Mac 麦克风（连接或搜索中修改即刻生效）。
+4. **开始语音输入或自定义按键**：按下遥控器语音键（或键盘唤醒键）开始说话，或在「按键」页自定义各个遥控器按键功能。
 
 ## 从源码构建
 
@@ -60,7 +62,7 @@ swift test
 open dist/KKvoice.app
 ```
 
-- `swift test`：运行 `Tests/KKvoiceTests` 下的 27 个单元测试。
+- `swift test`：运行 `Tests/KKvoiceTests` 下的 33 个单元测试。
 - `./*Tests/run.sh`：运行 5 组独立模块回归测试。
 - `./Scripts/build-app.sh`：自动构建 `KKvoiceMic.driver`、辅助进程 `KKvoiceRemoteHelper.app` 与主程序 `KKvoice.app`，并检测本机 Apple 证书完成由内向外的 Hardened Runtime 签名（未检测到证书时回退至 `-` 本地签名）。
 
@@ -77,9 +79,10 @@ open dist/KKvoice.app
 
 ## English
 
-**KKvoice** is a native macOS companion app for Google TV / Chromecast voice remotes. It turns the remote into a wireless microphone (`KKvoice Mic`) for voice dictation apps (such as Vokie), automatically falls back to a selected physical Mac microphone during active sessions when the remote is disconnected (zero mic capture while idle), maps remote buttons to macOS shortcuts/apps/text, and integrates with SnapNote (with customizable tags, defaulting to `"闪念"`).
+**KKvoice** is a native macOS companion app for Google TV / Chromecast voice remotes. It turns the remote into a wireless microphone (`KKvoice Mic`) for voice dictation apps (such as Vokie), automatically falls back to a selected physical Mac microphone during active sessions when the remote is disconnected (zero mic capture while idle), enters zero-power passive standby when you take your MacBook on the go and reconnects instantly on any remote keypress via macOS HID events, maps remote buttons to macOS shortcuts/apps/text, integrates with SnapNote (with customizable tags, defaulting to `"闪念"`), and includes a built-in GitHub Releases auto-updater.
 
 - **Requirements**: macOS 13.0 (Ventura) or later (Apple Silicon & Intel).
+- **First-Time Remote Pairing**: Hold **Back `←` + Home `🏠`** on the remote for 3–5 seconds until the LED pulses, then connect **Chromecast Remote** in System Settings → Bluetooth.
 - **Download**: Grab the latest archive from [Releases](https://github.com/intelKANG/KKvoice/releases/latest) and move `KKvoice.app` to `/Applications`.
 - **First Launch (Signed with Apple Developer certificate + Hardened Runtime, not notarized)**: Right-click `KKvoice.app` → **Open** (or allow in System Settings → Privacy & Security), or run:
   ```sh

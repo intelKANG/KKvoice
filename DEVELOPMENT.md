@@ -2,17 +2,34 @@
 
 ## Architecture & repository boundaries
 
-- `Sources/KKvoice`: SwiftUI settings window (`macOS 13.0+`), menu-bar controller, audio source router (`AudioSourceRouter`), in-app driver installer (`DriverInstaller`), keyboard settings, button mappings, Vokie capture monitor, and orchestration.
-- `Native/Helper`: Objective-C background process for Bluetooth discovery, Chromecast ATVV, remote buttons, keyboard event listening, and JSON-line IPC (`Native/Helper/SOURCE.md` records helper provenance).
+- `Sources/KKvoice`: SwiftUI settings window (`macOS 13.0+`), menu-bar controller, audio source router (`AudioSourceRouter`), in-app driver installer (`DriverInstaller`), native GitHub Releases updater (`AppUpdater`), keyboard settings, button mappings, Vokie capture monitor, and orchestration.
+- `Native/Helper`: Objective-C background process for bounded Bluetooth discovery & zero-power passive standby (`remote_standby`), HID wake-on-keypress reconnect, Chromecast ATVV, remote buttons, keyboard event listening, and JSON-line IPC (`Native/Helper/SOURCE.md` records helper provenance).
 - `Session`: deterministic capture state machine, shortcut relay, and physical-key coordination.
 - `Audio`: CoreAudio output to the explicitly selected virtual device, Mac microphone fallback relay, PCM conversion, buffering, and session isolation.
 - `SnapNote`: local MCP client, Keychain token store, action coordinator, and helper cancellation adapter.
 - `Driver`: BlackHole-based `KKvoice Mic` HAL driver build script (`Driver/build-blackhole-driver.sh`), legacy local-dev patch script (`Driver/build-driver.sh`), and privileged installer.
-- `*Tests` and `Tests/KKvoiceTests`: hardware-free regression tests (27 XCTest unit tests in `Tests/KKvoiceTests` plus 5 standalone `*Tests/run.sh` suites).
+- `*Tests` and `Tests/KKvoiceTests`: hardware-free regression tests (33 XCTest unit tests in `Tests/KKvoiceTests` plus 5 standalone `*Tests/run.sh` suites).
 
 Keep the remote protocol in the helper process and keep state transitions in the hardware-independent `Session` module. Do not move CoreAudio callbacks, BLE callbacks, or keychain access onto real-time audio or event-tap paths. Preserve third-party notices and do not commit credentials, personal notes, build products, local app bundles, or signing material.
 
 The app sends JSON-line commands to `KKvoiceRemoteHelper`. Keep command ordering serialized. The helper does not attach remote session identifiers to all BLE events, so the coordinator must reject stale events and release capture idempotently.
+
+## Bluetooth discovery & zero-power standby
+
+`KKvoiceRemoteHelper` uses bounded active BLE discovery windows combined with kernel-driven `IOHIDManager` passive wakeup:
+
+- On helper startup (`10s`), disconnect (`6s`), or manual UI scan (`{"type": "scan_remote", "duration": 30}`), the helper checks `retrieveConnectedPeripheralsWithServices` every `2.0s` and runs `scanForPeripheralsWithServices` (`CBCentralManagerScanOptionAllowDuplicatesKey: @NO`).
+- If the window expires without finding the remote, the helper stops `discoveryTimer` and calls `[central stopScan]`, emitting `{"type": "remote_standby"}` so the Mac consumes **zero background BLE scan power** when away from the remote.
+- As soon as the remote wakes up nearby (matching `HIDDeviceMatchedCallback` / `hid_connected` or delivering any HID button report while `peripheral == nil`), the helper immediately opens a `10.0s` discovery window on the main queue and reconnects the ATVV voice service.
+- `AppModel` persists `hasEverConnectedRemote` in `UserDefaults`: new Macs (`hasEverConnectedRemote == false`) display the first-time Bluetooth pairing bar (`同时长按「← + 🏠」3 秒`), while returning users away from their remote (`hasEverConnectedRemote == true`) see a calm offline standby state (`遥控器离线 · 当前使用 Mac 麦克风 · 按遥控器任意键自动重连`).
+
+## In-app updater (`AppUpdater`)
+
+`Sources/KKvoice/AppUpdater.swift` implements a zero-dependency updater backed by `https://api.github.com/repos/intelKANG/KKvoice/releases/latest`:
+
+- Compares release tags against `AppModel.appVersionString` via `SemanticVersion`.
+- Supports automatic check on launch (delayed 3s, never interrupting active voice recording) and every 6 hours (`autoCheckUpdates`, default `true`), plus optional automatic download and installation (`autoInstallUpdates`, default `false`).
+- Verifies downloaded archives before replacement: checks `CFBundleIdentifier == "local.kkvoice.app"`, runs `/usr/bin/codesign --verify --deep --strict`, validates matching Apple `TeamIdentifier` when the running bundle is team-signed, strips `com.apple.quarantine`, and swaps the app bundle via a detached relaunch script.
 
 ## Build workflow
 
