@@ -1,18 +1,53 @@
 # KKvoice
 
-KKvoice is a native macOS companion for supported Chromecast voice remotes. It relays the remote microphone to a selectable virtual audio input, lets a physical keyboard shortcut wake the remote, and maps remote buttons to macOS actions. It also includes an optional SnapNote integration.
+把 Google TV / Chromecast 语音遥控器变成 Mac 无线麦克风与快捷遥控器。
 
-This repository is the complete application source and build guide. Runtime credentials are kept in the macOS Keychain and are not part of the project.
+![KKvoice 连接页](docs/screenshots/connection.png)
 
-## Requirements
+## 功能亮点
 
-- macOS 12 or later; macOS 13 or later for the built-in login item setting.
-- Xcode Command Line Tools with Swift, Clang, and Apple SDKs.
-- A supported Chromecast voice remote paired with the Mac.
-- A compatible virtual audio device with 48 kHz, stereo, Float32 output. KKvoice can use `KKvoice Mic` or existing BlackHole-compatible devices.
-- The helper needs Bluetooth, Accessibility, and Input Monitoring permissions for the relevant features.
+- **语音遥控器当麦克风**：按遥控器语音键（或 Mac 键盘唤醒键）即可收音，将音频实时转发至虚拟麦克风，直接用于 Vokie 等语音输入软件。
+- **自动切换音源**：遥控器连接就绪时使用遥控器麦克风，断开或休眠时自动切回指定的 Mac 麦克风，无需在语音软件中频繁切换输入设备。
+- **按键映射**：直观的遥控器键位视图，支持将方向键、确认、返回、Home、YouTube、Netflix、静音、音量、电源、信源等按键映射为系统快捷键、打开/切换应用、输入文字或系统控制。
+- **闪念笔记联动**：一键触发闪念笔记（SnapNote）新建笔记，并自动添加自定义标签。
 
-## Build and run
+## 界面截图
+
+### 按键映射
+![按键映射](docs/screenshots/mappings.png)
+
+### 闪念笔记
+![闪念笔记](docs/screenshots/snapnote.png)
+
+### 通用与权限
+![通用与权限](docs/screenshots/general.png)
+
+## 下载与安装
+
+1. **下载应用**：前往 [GitHub Releases](https://github.com/intelKANG/KKvoice/releases/latest) 下载最新 `KKvoice-*.zip`，解压后将 `KKvoice.app` 拖入 `/Applications`（应用程序）。
+2. **首次打开**：应用使用本地 Ad-hoc 签名（未经过 Apple 公证）。首次打开请**在访达中右键点击 `KKvoice.app` 选择「打开」**，或在终端执行：
+   ```sh
+   xattr -dr com.apple.quarantine /Applications/KKvoice.app
+   ```
+3. **安装虚拟声卡**：首次打开应用后，点击界面上的**「安装 KKvoice Mic」**并输入管理员密码即可完成驱动安装（也可选择系统已有的 BlackHole 兼容虚拟音频设备）。
+4. **授予系统权限**：根据功能需要在「系统设置 → 隐私与安全性」中开启：
+   - **蓝牙**：连接并接收遥控器语音与按键
+   - **辅助功能**：发送模拟快捷键与监听唤醒键
+   - **输入监控**：响应遥控器按键与全局唤醒快捷键
+   - **麦克风**：在遥控器未连接时使用 Mac 麦克风作为备用音源
+
+> 系统要求：macOS 12 及以上（开机自启设置需 macOS 13 及以上）。
+
+## 使用步骤
+
+1. 在 macOS「系统设置 → 蓝牙」中配对 Google TV / Chromecast 语音遥控器。
+2. 打开 KKvoice，安装并选择虚拟麦克风 `KKvoice Mic`，然后将语音输入软件（如 Vokie）的麦克风输入设为 `KKvoice Mic`。
+3. 在「连接」页设置语音输入软件的触发快捷键与备用 Mac 麦克风。
+4. 按下遥控器语音键开始说话，或在「按键」页自定义各个遥控器按键功能。
+
+## 从源码构建
+
+需要安装 Xcode（用于编译虚拟声卡驱动）或 Xcode Command Line Tools：
 
 ```sh
 swift test
@@ -25,39 +60,26 @@ swift test
 open dist/KKvoice.app
 ```
 
-`build-app.sh` compiles the universal helper and release Swift app, bundles the app icon and helper, then ad-hoc signs the local app. This is a local development build, not a Developer ID or notarized release.
+架构说明与开发指南详见 [DEVELOPMENT.md](DEVELOPMENT.md)。
 
-## KKvoice Mic virtual driver
+## 鸣谢与许可
 
-The app can use an existing compatible virtual device. To build the optional `KKvoice Mic` HAL driver, `Driver/build-driver.sh` currently requires the vRemoter-derived driver to be installed at:
+- [BlackHole](https://github.com/ExistentialAudio/BlackHole)（GNU GPL v3）：内置的 `KKvoice Mic` 虚拟声卡驱动基于 BlackHole 源码编译。
+- [vRemoter](https://github.com/VincentKingHsu/vRemoter)：提供 Chromecast 语音遥控器与 ATVV 协议兼容性参考。
 
-```text
-/Library/Audio/Plug-Ins/HAL/vRemoteDriver.driver
-```
+第三方源码来源与许可证说明详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-It copies that driver into `.build/KKvoiceMic.driver`, assigns separate bundle/factory/device identifiers, and patches the display name. It does not modify the installed vRemote driver. After inspecting the local build, install with:
+---
 
-```sh
-./Scripts/install-audio-driver.sh
-```
+## English
 
-macOS prompts for administrator authorization and restarts Core Audio. The installer preserves any prior KKvoice Mic driver as a timestamped backup. Choose `KKvoice Mic` again in Vokie or another input app after installation. The binary-patching method depends on a local vRemote driver binary and is not a clean-room source build; public redistribution requires reviewing the upstream licenses and notices in `THIRD_PARTY_NOTICES.md`.
+**KKvoice** is a native macOS companion app for Google TV / Chromecast voice remotes. It turns the remote into a wireless microphone for voice dictation apps (such as Vokie), automatically falls back to a selected Mac microphone when the remote is disconnected, maps remote buttons to macOS shortcuts/apps/text, and integrates with SnapNote.
 
-## Architecture
-
-- `Sources/KKvoice`: AppKit settings window, menu-bar item, keyboard settings, button mappings, Vokie capture monitor, and orchestration.
-- `Native/Helper`: Objective-C background process for Bluetooth discovery, Chromecast ATVV, remote buttons, keyboard event listening, and JSON-line IPC.
-- `Session`: deterministic capture state machine, shortcut relay, and physical-key coordination.
-- `Audio`: CoreAudio output to the explicitly selected virtual device, PCM conversion, buffering, and session isolation.
-- `SnapNote`: local MCP client, Keychain token store, action coordinator, and helper cancellation adapter.
-- `Driver`: optional locally built KKvoice Mic driver and privileged installer.
-- `*Tests` and `Tests/KKvoiceTests`: hardware-free regression tests.
-
-Read `DEVELOPMENT.md` before changing architecture, the helper protocol, driver identifiers, permissions, or the SnapNote action flow. `Native/Helper/SOURCE.md` records helper provenance. Preserve third-party notices and do not commit credentials, personal notes, build products, local app bundles, or signing material.
-
-## Acknowledgements
-
-- [BlackHole](https://github.com/ExistentialAudio/BlackHole) provides the basis for the virtual audio driver.
-- [vRemoter](https://github.com/VincentKingHsu/vRemoter) informed the remote and audio-driver compatibility work.
-
-See `THIRD_PARTY_NOTICES.md` for source provenance and license notes.
+- **Download**: Grab the latest archive from [Releases](https://github.com/intelKANG/KKvoice/releases/latest) and move `KKvoice.app` to `/Applications`.
+- **First Launch (Ad-hoc Signed)**: Right-click `KKvoice.app` → **Open**, or run:
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/KKvoice.app
+  ```
+- **Virtual Audio Driver**: Click **Install KKvoice Mic** (`安装 KKvoice Mic`) inside the app on first launch and enter your administrator password (built from [BlackHole](https://github.com/ExistentialAudio/BlackHole) under GPLv3).
+- **Permissions**: Grant Bluetooth, Accessibility, Input Monitoring, and Microphone access in System Settings → Privacy & Security.
+- **Development & Notices**: See [DEVELOPMENT.md](DEVELOPMENT.md) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

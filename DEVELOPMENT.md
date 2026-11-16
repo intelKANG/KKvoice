@@ -1,8 +1,16 @@
 # Development Guide
 
-## Repository boundaries
+## Architecture & repository boundaries
 
-The app is built from `Sources/KKvoice`, `Session`, `Audio`, `SnapNote`, and `Native`. Keep the remote protocol in the helper process and keep state transitions in the hardware-independent `Session` module. Do not move CoreAudio callbacks, BLE callbacks, or keychain access onto real-time audio or event-tap paths.
+- `Sources/KKvoice`: SwiftUI settings window, menu-bar controller, audio source router (`AudioSourceRouter`), in-app driver installer (`DriverInstaller`), keyboard settings, button mappings, Vokie capture monitor, and orchestration.
+- `Native/Helper`: Objective-C background process for Bluetooth discovery, Chromecast ATVV, remote buttons, keyboard event listening, and JSON-line IPC (`Native/Helper/SOURCE.md` records helper provenance).
+- `Session`: deterministic capture state machine, shortcut relay, and physical-key coordination.
+- `Audio`: CoreAudio output to the explicitly selected virtual device, Mac microphone fallback relay, PCM conversion, buffering, and session isolation.
+- `SnapNote`: local MCP client, Keychain token store, action coordinator, and helper cancellation adapter.
+- `Driver`: BlackHole-based `KKvoice Mic` HAL driver build script (`Driver/build-blackhole-driver.sh`), legacy local-dev patch script (`Driver/build-driver.sh`), and privileged installer.
+- `*Tests` and `Tests/KKvoiceTests`: hardware-free regression tests.
+
+Keep the remote protocol in the helper process and keep state transitions in the hardware-independent `Session` module. Do not move CoreAudio callbacks, BLE callbacks, or keychain access onto real-time audio or event-tap paths. Preserve third-party notices and do not commit credentials, personal notes, build products, local app bundles, or signing material.
 
 The app sends JSON-line commands to `KKvoiceRemoteHelper`. Keep command ordering serialized. The helper does not attach remote session identifiers to all BLE events, so the coordinator must reject stale events and release capture idempotently.
 
@@ -20,15 +28,17 @@ swift test
 ./Scripts/build-app.sh
 ```
 
-`Scripts/build-helper.sh` compiles an arm64/x86_64 Objective-C helper with the macOS 12 deployment target. `Scripts/build-app.sh` runs that build, compiles the Swift package in release mode, copies the icon and helper into `dist/KKvoice.app`, and applies an ad-hoc signature. Do not treat this signature as suitable for distribution or as stable TCC identity across signing changes.
+`Scripts/build-helper.sh` compiles an arm64/x86_64 Objective-C helper with the macOS 12 deployment target. `Scripts/build-app.sh` runs that build, compiles the Swift package in release mode, copies the icon, helper, and (when built from BlackHole source) `KKvoiceMic.driver` into `dist/KKvoice.app`, and applies an ad-hoc signature. Do not treat this signature as suitable for notarized distribution or as stable TCC identity across signing changes.
 
 ## Audio driver
 
-The app routes remote PCM to the selected device's output side. The virtual device exposes that signal as an input to Vokie and other speech applications. KKvoice expects 48 kHz stereo packed Float32 output and sends 16 kHz mono remote PCM through its bounded buffer.
+The app routes remote PCM (or fallback Mac microphone audio) to the selected virtual device's output side. The virtual device exposes that signal as an input to Vokie and other speech applications. KKvoice expects 48 kHz stereo packed Float32 output and sends 16 kHz mono remote PCM through its bounded buffer.
 
-`Driver/build-driver.sh` copies the installed `/Library/Audio/Plug-Ins/HAL/vRemoteDriver.driver` and patches the copy to create `KKvoice Mic`. The new driver has distinct identifiers; the original vRemote and BlackHole drivers are left intact. This process depends on a locally installed upstream-derived driver, so a developer setting up from a clean Mac must install vRemoter and its driver first. The driver is not built by `Scripts/build-app.sh`.
+For releases, `Driver/build-blackhole-driver.sh` builds `KKvoiceMic.driver` directly from upstream [BlackHole](https://github.com/ExistentialAudio/BlackHole) source (GPLv3) with custom identifiers (`KKvoice Mic`, UID `KKvoiceMi2ch_UID`) and bundles it into `KKvoice.app/Contents/Resources/` for one-click in-app installation via `DriverInstaller`.
 
-`Scripts/install-audio-driver.sh` stages a copy in `/tmp`, asks macOS for administrator authorization, installs the driver, and restarts Core Audio. This changes system-wide audio inventory and may require selecting the new input again in speech software. For development, inspect the generated driver and its signature before installation. Do not remove the timestamped previous-driver backups without explicit reason.
+Legacy local-development script: `Driver/build-driver.sh` copies a locally installed `/Library/Audio/Plug-Ins/HAL/vRemoteDriver.driver` and binary-patches the copy to create `KKvoice Mic`. That script is for local development only and its output must **never** be redistributed in releases.
+
+`Scripts/install-audio-driver.sh` stages a copy in `/tmp`, asks macOS for administrator authorization, installs the driver, and restarts Core Audio. This changes system-wide audio inventory and may require selecting the new input again in speech software. Do not remove the timestamped previous-driver backups without explicit reason.
 
 ## Permissions and privacy
 
