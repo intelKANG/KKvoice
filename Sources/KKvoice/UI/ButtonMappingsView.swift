@@ -100,11 +100,11 @@ struct ButtonMappingsView: View {
             HStack(alignment: .center, spacing: DS.s12) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.accentColor.opacity(0.12))
+                        .fill(DS.subtleFill)
                         .frame(width: 30, height: 30)
                     Image(systemName: "rectangle.stack.fill")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(.secondary)
                 }
 
                 VStack(alignment: .leading, spacing: 1) {
@@ -218,7 +218,7 @@ struct ButtonMappingsView: View {
 
         return Card(padding: 8, isHighlighted: isSelected) {
             HStack(spacing: 8) {
-                iconBadge(symbol: item.symbol, isSelected: isSelected, isMuted: false)
+                iconBadge(symbol: item.symbol, isSelected: isSelected)
 
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
@@ -228,12 +228,12 @@ struct ButtonMappingsView: View {
                             .fixedSize(horizontal: true, vertical: false)
                         Text("固定")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(isSelected ? Color.accentColor : .secondary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 1)
                             .background(
                                 Capsule(style: .continuous)
-                                    .fill(Color.accentColor.opacity(0.14))
+                                    .fill(isSelected ? Color.accentColor.opacity(0.14) : DS.subtleFill)
                             )
                             .fixedSize(horizontal: true, vertical: false)
                     }
@@ -262,7 +262,6 @@ struct ButtonMappingsView: View {
         let isSelected = (selectedButtonID == item.id)
         let lockedBySwitcher = isSwitcherLocked(item.id)
         let currentAction = draft.buttons[item.id] ?? .none
-        let isNone = !lockedBySwitcher && currentAction.target == "none"
         let appInfo = lockedBySwitcher ? nil : resolvedApplication(for: currentAction)
 
         return Card(
@@ -273,8 +272,7 @@ struct ButtonMappingsView: View {
             HStack(spacing: 8) {
                 iconBadge(
                     symbol: item.symbol,
-                    isSelected: isSelected,
-                    isMuted: isNone || lockedBySwitcher
+                    isSelected: isSelected
                 )
 
                 Text(item.name)
@@ -290,10 +288,10 @@ struct ButtonMappingsView: View {
                     Image(nsImage: icon)
                         .resizable()
                         .interpolation(.high)
-                        .frame(width: 16, height: 16)
+                        .frame(width: 15, height: 15)
                 }
 
-                actionMenu(for: item.id, lockedBySwitcher: lockedBySwitcher, hasAppIcon: appInfo?.icon != nil)
+                actionMenu(for: item.id, lockedBySwitcher: lockedBySwitcher)
             }
             .frame(minHeight: 28)
             .contentShape(Rectangle())
@@ -309,28 +307,20 @@ struct ButtonMappingsView: View {
         }
     }
 
-    private func iconBadge(symbol: String, isSelected: Bool, isMuted: Bool) -> some View {
+    private func iconBadge(symbol: String, isSelected: Bool) -> some View {
         ZStack {
             Circle()
-                .fill(
-                    isSelected
-                        ? Color.accentColor
-                        : (isMuted ? DS.subtleFill : Color.accentColor.opacity(0.12))
-                )
+                .fill(isSelected ? Color.accentColor : DS.subtleFill)
                 .frame(width: 26, height: 26)
 
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(
-                    isSelected
-                        ? Color.white
-                        : (isMuted ? Color.secondary : Color.accentColor)
-                )
+                .foregroundStyle(isSelected ? Color.white : Color.secondary)
         }
     }
 
     @ViewBuilder
-    private func actionMenu(for id: String, lockedBySwitcher: Bool, hasAppIcon: Bool) -> some View {
+    private func actionMenu(for id: String, lockedBySwitcher: Bool) -> some View {
         let action = draft.buttons[id] ?? .none
         let desired = desiredMenuChoice(for: action)
         let summary = lockedBySwitcher ? "切换应用" : actionSummary(for: id)
@@ -391,9 +381,7 @@ struct ButtonMappingsView: View {
             Button {
                 selectMenuOption(choice: typeTextChoice, for: id)
             } label: {
-                let title = desired == typeTextChoice
-                    ? "文字：\(String((action.text ?? "").prefix(24)))"
-                    : "输入文字…"
+                let title = desired == typeTextChoice ? "输入文字" : "输入文字…"
                 if desired == typeTextChoice {
                     Label(title, systemImage: "checkmark")
                 } else {
@@ -419,7 +407,7 @@ struct ButtonMappingsView: View {
         }
         .menuStyle(.borderedButton)
         .controlSize(.small)
-        .frame(width: lockedBySwitcher ? 96 : (hasAppIcon ? 116 : 134))
+        .frame(width: 130)
         .disabled(lockedBySwitcher)
         .simultaneousGesture(
             TapGesture().onEnded {
@@ -596,7 +584,7 @@ struct ButtonMappingsView: View {
         case chooseFileChoice:
             return "文件：\(URL(fileURLWithPath: String(action.target.dropFirst("openFile:".count))).lastPathComponent)"
         case typeTextChoice:
-            return "文字：\(String((action.text ?? "").prefix(24)))"
+            return "输入文字"
         case snapnoteChoice:
             return "新建闪念笔记"
         default:
