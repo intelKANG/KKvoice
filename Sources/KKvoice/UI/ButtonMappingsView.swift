@@ -119,7 +119,7 @@ struct ButtonMappingsView: View {
 
                 Spacer(minLength: DS.s12)
 
-                Toggle("左右键切换应用", isOn: $draft.appSwitcherNavigation)
+                Toggle("", isOn: $draft.appSwitcherNavigation)
                     .labelsHidden()
                     .toggleStyle(.kkSwitch)
                     .accessibilityLabel("左右键切换应用")
@@ -553,12 +553,7 @@ struct ButtonMappingsView: View {
         let bundleID = String(target.dropFirst(prefix.count))
         guard !bundleID.isEmpty else { return nil }
 
-        let resolvedURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
-            ?? (bundleID == "com.openai.chatgpt"
-                ? NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex")
-                : nil)
-
-        if let url = resolvedURL {
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
             var name = FileManager.default.displayName(atPath: url.path)
             if name.lowercased().hasSuffix(".app") {
                 name = String(name.dropLast(4))
