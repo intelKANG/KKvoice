@@ -216,9 +216,9 @@ struct ConnectionView: View {
         case .keysConnected:
             return "正在连接语音"
         case .voiceReady:
-            return "按语音键或唤醒键说话"
+            return "按语音键或键盘触发键说话"
         case .recording:
-            return "按语音键或唤醒键结束"
+            return "按语音键或键盘触发键结束"
         case .permissionRequired:
             return "授权后重新连接"
         case .error(let msg):
@@ -378,10 +378,10 @@ struct ConnectionView: View {
                         tone: model.connectionPhase.tone
                     )
                     statusTile(
-                        title: "唤醒键",
-                        value: model.keyboardStatusText,
+                        title: "键盘触发键",
+                        value: model.wakeSelectionIndex == 0 ? "未启用" : model.keyboardStatusText,
                         icon: "keyboard",
-                        tone: keyboardTone
+                        tone: model.wakeSelectionIndex == 0 ? .disconnected : keyboardTone
                     )
                     statusTile(
                         title: "音源",
@@ -472,7 +472,7 @@ struct ConnectionView: View {
             }
             Text(value)
                 .font(.callout.weight(.medium))
-                .foregroundStyle(.primary)
+                .foregroundStyle(value == "未启用" ? .secondary : .primary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(10)
@@ -708,38 +708,8 @@ struct ConnectionView: View {
                 CardDivider()
 
                 LabeledRow(
-                    "唤醒键",
-                    subtitle: "Mac 键盘触发收音",
-                    systemImage: "command.square"
-                ) {
-                    Menu {
-                        ForEach(Array(model.wakeKeyTitles.enumerated()), id: \.offset) { idx, title in
-                            Button {
-                                model.selectWakeKey(at: idx)
-                            } label: {
-                                if idx == model.wakeSelectionIndex {
-                                    Label(title, systemImage: "checkmark")
-                                } else {
-                                    Text(title)
-                                }
-                            }
-                        }
-                    } label: {
-                        Text(selectedWakeSummary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .menuStyle(.borderedButton)
-                    .frame(width: Self.controlColumnWidth)
-                    .disabled(model.isControlsLocked)
-                }
-
-                CardDivider()
-
-                LabeledRow(
-                    "输入快捷键",
-                    subtitle: "发给语音输入软件",
+                    "语音软件快捷键",
+                    subtitle: "需与豆包 / Vokie 等软件内的快捷键一致",
                     systemImage: "bolt.horizontal.circle"
                 ) {
                     Menu {
@@ -756,6 +726,36 @@ struct ConnectionView: View {
                         }
                     } label: {
                         Text(selectedInputSummary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .menuStyle(.borderedButton)
+                    .frame(width: Self.controlColumnWidth)
+                    .disabled(model.isControlsLocked)
+                }
+
+                CardDivider()
+
+                LabeledRow(
+                    "键盘触发键（可选）",
+                    subtitle: "用电脑键盘代替遥控器语音键触发收音",
+                    systemImage: "command.square"
+                ) {
+                    Menu {
+                        ForEach(Array(model.wakeKeyTitles.enumerated()), id: \.offset) { idx, title in
+                            Button {
+                                model.selectWakeKey(at: idx)
+                            } label: {
+                                if idx == model.wakeSelectionIndex {
+                                    Label(title, systemImage: "checkmark")
+                                } else {
+                                    Text(title)
+                                }
+                            }
+                        }
+                    } label: {
+                        Text(selectedWakeSummary)
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .frame(maxWidth: .infinity, alignment: .leading)

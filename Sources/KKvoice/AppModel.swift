@@ -357,6 +357,13 @@ final class AppModel: ObservableObject {
         self.wakeSelectionIndex = keyboardSettings.wakeSelection(choices: InputShortcut.choices)
         self.inputSelectionIndex = keyboardSettings.inputSelection(choices: InputShortcut.choices)
         self.chosenInputShortcut = keyboardSettings.inputDefinition().systemShortcut
+        if keyboardSettings.wakeDefinition() == nil {
+            self.keyboardState = .disabled
+            self.keyboardStatusText = "未启用"
+        } else {
+            self.keyboardState = .stopped
+            self.keyboardStatusText = "未连接"
+        }
         let storedProvider = UserDefaults.standard.string(forKey: quickNoteProviderKey)
             .flatMap(QuickNoteProvider.init(rawValue:)) ?? .appleNotes
         self.quickNoteProvider = storedProvider
@@ -501,10 +508,15 @@ final class AppModel: ObservableObject {
         do {
             // Restrict UI to known loopback devices, never speakers or the Mac mic.
             availableDevices = try KKAudioOutputDevices.list().filter {
-                $0.uid == "KKvoiceMi2ch_UID" || $0.uid == "vRemoteDr2ch_UID" || $0.name.localizedCaseInsensitiveContains("BlackHole")
+                $0.uid == "KKvoiceMi2ch_UID"
+                    || $0.uid == "MiRemoteV2ch_UID"
+                    || $0.uid == "vRemoteDr2ch_UID"
+                    || $0.name.localizedCaseInsensitiveContains("BlackHole")
             }
             deviceLoadFailed = false
             if let index = availableDevices.firstIndex(where: { $0.uid == "KKvoiceMi2ch_UID" }) {
+                selectedDeviceIndex = index
+            } else if let index = availableDevices.firstIndex(where: { $0.uid == "MiRemoteV2ch_UID" }) {
                 selectedDeviceIndex = index
             } else if let index = availableDevices.firstIndex(where: { $0.uid == "vRemoteDr2ch_UID" }) {
                 selectedDeviceIndex = index
@@ -653,8 +665,17 @@ final class AppModel: ObservableObject {
     func reloadHelperConfiguration() {
         chosenInputShortcut = keyboardSettings.inputDefinition().systemShortcut
         _ = voice.setRemoteGesture(voiceModeIndex == 1 ? .hybrid : .toggle)
-        guard isSessionActive else { return }
         let wakeDefinition = keyboardSettings.wakeDefinition()
+        guard isSessionActive else {
+            if wakeDefinition == nil {
+                keyboardState = .disabled
+                keyboardStatusText = "未启用"
+            } else {
+                keyboardState = .stopped
+                keyboardStatusText = "未连接"
+            }
+            return
+        }
         keyboardStatus.connecting(key: wakeDefinition?.keyName)
         keyboardState = keyboardStatus.state
         keyboardStatusText = keyboardStatus.text
@@ -836,8 +857,13 @@ final class AppModel: ObservableObject {
             }
         } catch {
             keyboardStatus.receive(["type": "helper_process_exited"])
-            keyboardState = keyboardStatus.state
-            keyboardStatusText = keyboardStatus.text
+            if keyboardSettings.wakeDefinition() == nil {
+                keyboardState = .disabled
+                keyboardStatusText = "未启用"
+            } else {
+                keyboardState = keyboardStatus.state
+                keyboardStatusText = keyboardStatus.text
+            }
             isSessionActive = false
             isRemoteInStandby = false
             connectionPhase = .error(error.localizedDescription)
@@ -1127,8 +1153,13 @@ final class AppModel: ObservableObject {
             Task { await adapter.handleHelperEvent(type: type, actionID: id, prevented: prevented) }
         }
         keyboardStatus.receive(message)
-        keyboardState = keyboardStatus.state
-        keyboardStatusText = keyboardStatus.text
+        if keyboardSettings.wakeDefinition() == nil {
+            keyboardState = .disabled
+            keyboardStatusText = "未启用"
+        } else {
+            keyboardState = keyboardStatus.state
+            keyboardStatusText = keyboardStatus.text
+        }
         switch message["type"] as? String {
         case "device_ready":
             voice.setReady(true)

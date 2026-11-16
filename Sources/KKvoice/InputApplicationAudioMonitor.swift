@@ -1,8 +1,21 @@
 import CoreAudio
 import Foundation
 
-/// Read-only check of Vokie's CoreAudio capture state and selected input UID.
+/// Read-only check of voice input apps' CoreAudio capture state and selected input UID.
 enum InputApplicationAudioMonitor {
+    private static let monitoredBundlePrefixes = [
+        "com.vokie.desktop",
+        "com.bytedance.inputmethod.doubaoime",
+        "com.tencent.inputmethod.wetype"
+    ]
+
+    static func isMonitoredInputAppBundle(_ bundle: String) -> Bool {
+        let normalized = bundle.lowercased()
+        return monitoredBundlePrefixes.contains { prefix in
+            normalized == prefix || normalized.hasPrefix(prefix + ".")
+        }
+    }
+
     static func isVokieCapturing(deviceUID: String) -> Bool? {
         guard let processes = propertyData(
             AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyProcessObjectList,
@@ -15,7 +28,7 @@ enum InputApplicationAudioMonitor {
         var uncertain = false
         for id in ids {
             guard let bundle = stringProperty(id, kAudioProcessPropertyBundleID),
-                  bundle == "com.vokie.desktop" || bundle.hasPrefix("com.vokie.desktop.") else { continue }
+                  isMonitoredInputAppBundle(bundle) else { continue }
             guard let runningInput = uint32Property(id, kAudioProcessPropertyIsRunningInput) else { uncertain = true; continue }
             guard runningInput == 1 else { continue }
             guard let devices = propertyData(id, kAudioProcessPropertyDevices, kAudioDevicePropertyScopeInput) else { uncertain = true; continue }

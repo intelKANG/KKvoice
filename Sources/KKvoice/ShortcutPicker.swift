@@ -304,7 +304,7 @@ private struct ShortcutRecorderPanelView: View {
             return
         }
         if globalWake && !value.supportedByLegacyKeyboardTrigger {
-            state.errorMessage = "唤醒键使用字母或数字时需搭配修饰键"
+            state.errorMessage = "键盘触发键使用字母或数字时需搭配修饰键"
             return
         }
         onConfirm(value)
