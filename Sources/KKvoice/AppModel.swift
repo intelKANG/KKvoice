@@ -353,10 +353,11 @@ final class AppModel: ObservableObject {
         self.updater = resolvedUpdater
         let initialMappings = mappingStore.load()
         self.mappings = initialMappings
-        self.voiceModeIndex = UserDefaults.standard.bool(forKey: "remoteHybridGesture") ? 1 : 0
+        self.voiceModeIndex = 1
         self.wakeSelectionIndex = keyboardSettings.wakeSelection(choices: InputShortcut.choices)
         self.inputSelectionIndex = keyboardSettings.inputSelection(choices: InputShortcut.choices)
         self.chosenInputShortcut = keyboardSettings.inputDefinition().systemShortcut
+        _ = self.voice.setRemoteGesture(.hybrid)
         if keyboardSettings.wakeDefinition() == nil {
             self.keyboardState = .disabled
             self.keyboardStatusText = "未启用"
@@ -602,6 +603,128 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func promptUninstallDialog() {
+        guard !isDriverInstalling else { return }
+        guard !isRecording else {
+            statusText = "收音中，无法卸载"
+            return
+        }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "卸载 KKvoice 驱动或应用"
+        alert.informativeText = "卸载后请在语音输入软件（豆包 / Vokie 等）中将麦克风改回「系统默认」，以免语音软件录不到声音。"
+        alert.addButton(withTitle: "仅卸载驱动")
+        alert.addButton(withTitle: "彻底卸载 KKvoice")
+        alert.addButton(withTitle: "取消")
+        if alert.buttons.indices.contains(1) {
+            alert.buttons[1].hasDestructiveAction = true
+        }
+        alert.window.appearance = Self.currentWindowAppearance
+
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            uninstallDriverOnly()
+        case .alertSecondButtonReturn:
+            uninstallAppCompletely()
+        default:
+            break
+        }
+    }
+
+    func uninstallDriverOnly() {
+        guard !isDriverInstalling else { return }
+        guard !isRecording else {
+            statusText = "收音中，无法卸载驱动"
+            return
+        }
+        if isSessionActive {
+            disconnect()
+        }
+        isDriverInstalling = true
+        driverInstallError = nil
+        driverInstallMessage = "正在卸载 KKvoice Mic…"
+        statusText = "正在卸载 KKvoice Mic…"
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await DriverInstaller.uninstall()
+                self.refreshDevices()
+                self.isDriverInstalling = false
+                self.driverInstallError = nil
+                self.driverInstallMessage = "已卸载驱动（请将语音软件麦克风改回系统默认）"
+                self.statusText = "已卸载 KKvoice Mic"
+            } catch {
+                self.isDriverInstalling = false
+                self.driverInstallMessage = nil
+                let message = error.localizedDescription
+                self.driverInstallError = message
+                self.statusText = message
+            }
+        }
+    }
+
+    func uninstallAppCompletely() {
+        guard !isDriverInstalling else { return }
+        guard !isRecording else {
+            statusText = "收音中，无法卸载"
+            return
+        }
+        if isSessionActive {
+            disconnect()
+        }
+        isDriverInstalling = true
+        driverInstallError = nil
+        driverInstallMessage = "正在彻底卸载 KKvoice…"
+        statusText = "正在彻底卸载 KKvoice…"
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await DriverInstaller.uninstall()
+                try? await SMAppService.mainApp.unregister()
+                try? self.snapTokenStore.delete()
+                if let bundleID = Bundle.main.bundleIdentifier {
+                    UserDefaults.standard.removePersistentDomain(forName: bundleID)
+                }
+                let knownKeys = [
+                    "keyboardWakeKey",
+                    "inputShortcutKey",
+                    "remoteHybridGesture",
+                    self.quickNoteProviderKey,
+                    self.snapShortcutKey,
+                    self.snapTagKey,
+                    self.snapNoteMCPEndpointKey,
+                    self.snapNoteMCPPortKey,
+                    self.showMenuBarIconKey,
+                    self.hasEverConnectedRemoteKey,
+                    "appAppearanceMode",
+                    "buttonMappings.v1",
+                    "selectedMacMicUID",
+                    "KKvoice.updater.autoCheckEnabled",
+                    "KKvoice.updater.autoDownloadAndInstall",
+                    "KKvoice.updater.lastCheckedAt"
+                ]
+                for key in knownKeys {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+                UserDefaults.standard.synchronize()
+
+                let bundleURL = Bundle.main.bundleURL
+                if bundleURL.pathExtension.lowercased() == "app" {
+                    _ = try? FileManager.default.trashItem(at: bundleURL, resultingItemURL: nil)
+                }
+                NSApplication.shared.terminate(nil)
+            } catch {
+                self.isDriverInstalling = false
+                self.driverInstallMessage = nil
+                let message = error.localizedDescription
+                self.driverInstallError = message
+                self.statusText = message
+            }
+        }
+    }
+
     @discardableResult
     func checkAndPromptDriverOnLaunch() -> Bool {
         if isKKvoiceMicAvailable || DriverInstaller.isDeviceAvailable {
@@ -664,7 +787,7 @@ final class AppModel: ObservableObject {
 
     func reloadHelperConfiguration() {
         chosenInputShortcut = keyboardSettings.inputDefinition().systemShortcut
-        _ = voice.setRemoteGesture(voiceModeIndex == 1 ? .hybrid : .toggle)
+        _ = voice.setRemoteGesture(.hybrid)
         let wakeDefinition = keyboardSettings.wakeDefinition()
         guard isSessionActive else {
             if wakeDefinition == nil {
@@ -731,9 +854,9 @@ final class AppModel: ObservableObject {
     }
 
     func selectVoiceMode(at index: Int) {
-        voiceModeIndex = index
-        UserDefaults.standard.set(index == 1, forKey: "remoteHybridGesture")
-        _ = voice.setRemoteGesture(index == 1 ? .hybrid : .toggle)
+        voiceModeIndex = 1
+        UserDefaults.standard.set(true, forKey: "remoteHybridGesture")
+        _ = voice.setRemoteGesture(.hybrid)
     }
 
     func updateCustomShortcutTitles() {
@@ -818,7 +941,7 @@ final class AppModel: ObservableObject {
         selectedDeviceUID = availableDevices.indices.contains(index) ? availableDevices[index].uid : nil
         chosenInputShortcut = keyboardSettings.inputDefinition().systemShortcut
         let wakeDefinition = keyboardSettings.wakeDefinition()
-        guard voice.setRemoteGesture(voiceModeIndex == 1 ? .hybrid : .toggle) else {
+        guard voice.setRemoteGesture(.hybrid) else {
             statusText = "收音中，无法操作"
             return
         }

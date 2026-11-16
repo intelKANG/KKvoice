@@ -119,16 +119,35 @@ struct GeneralView: View {
                         HStack(spacing: 6) {
                             ProgressView()
                                 .controlSize(.small)
-                            Text("安装中…")
+                            Text(model.driverInstallMessage ?? "处理中…")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     } else {
-                        Button(model.isKKvoiceMicAvailable ? "重新安装驱动" : "安装 KKvoice Mic") {
-                            model.installDriver(reinstall: true)
+                        HStack(spacing: DS.s8) {
+                            Button(model.isKKvoiceMicAvailable ? "重新安装驱动" : "安装 KKvoice Mic") {
+                                model.installDriver(reinstall: true)
+                            }
+                            .controlSize(.small)
+                            .disabled(model.isControlsLocked)
+
+                            if model.isKKvoiceMicAvailable || DriverInstaller.isBundleInstalled {
+                                Button("卸载驱动") {
+                                    model.promptUninstallDialog()
+                                }
+                                .controlSize(.small)
+                                .disabled(model.isControlsLocked)
+                            }
+
+                            Button(role: .destructive) {
+                                model.promptUninstallDialog()
+                            } label: {
+                                Text("卸载 KKvoice…")
+                                    .foregroundStyle(.red)
+                            }
+                            .controlSize(.small)
+                            .disabled(model.isControlsLocked)
                         }
-                        .controlSize(.small)
-                        .disabled(model.isControlsLocked)
                     }
                 }
             }

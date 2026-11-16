@@ -543,12 +543,6 @@ struct ConnectionView: View {
         return titles[idx]
     }
 
-    private var selectedVoiceModeSummary: String {
-        let titles = AppModel.voiceModeTitles
-        let idx = titles.indices.contains(model.voiceModeIndex) ? model.voiceModeIndex : 0
-        return titles[idx]
-    }
-
     private var voiceSettingsCard: some View {
         Card(padding: DS.s16) {
             VStack(alignment: .leading, spacing: 9) {
@@ -765,31 +759,30 @@ struct ConnectionView: View {
                     .disabled(model.isControlsLocked)
                 }
 
-                CardDivider()
+                HStack(alignment: .center, spacing: 6) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(Color.accentColor)
 
-                LabeledRow("语音键", systemImage: "mic.circle") {
-                    Menu {
-                        ForEach(Array(AppModel.voiceModeTitles.enumerated()), id: \.offset) { idx, title in
-                            Button {
-                                model.selectVoiceMode(at: idx)
-                            } label: {
-                                if idx == model.voiceModeIndex {
-                                    Label(title, systemImage: "checkmark")
-                                } else {
-                                    Text(title)
-                                }
-                            }
-                        }
-                    } label: {
-                        Text(selectedVoiceModeSummary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .menuStyle(.borderedButton)
-                    .frame(width: Self.controlColumnWidth)
-                    .disabled(model.isControlsLocked)
+                    Text("提示：请在语音输入软件（豆包 / Vokie 等）中将麦克风设为「KKvoice Mic」；若停用或卸载本软件，请改回「系统默认」。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 0)
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: DS.controlRadius, style: .continuous)
+                        .fill(DS.subtleFill)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DS.controlRadius, style: .continuous)
+                        .strokeBorder(DS.border, lineWidth: 1)
+                )
             }
         }
     }
