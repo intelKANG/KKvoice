@@ -127,6 +127,7 @@ public final class KKCoreAudioOutput: RemoteAudioOutput {
         }
         let device = try KKAudioOutputDevices.resolve(deviceUID)
         try Self.checkFormat(device: device, sampleRate: sampleRate, channels: channels)
+        Self.ensureUnmutedFullVolume(device: device)
         var proc: AudioDeviceIOProcID?
         let create = AudioDeviceCreateIOProcIDWithBlock(&proc, device, nil) { _, _, _, outputData, _ in
             KKCoreAudioOutput.write(outputData, render: render)
@@ -183,6 +184,118 @@ public final class KKCoreAudioOutput: RemoteAudioOutput {
         guard format.mBytesPerFrame == (nonInterleaved ? 4 : 8),
               format.mBytesPerPacket == format.mBytesPerFrame else {
             throw KKCoreAudioError.unsupportedFormat("Invalid bytes per frame or packet")
+        }
+    }
+
+    /// Ensures the selected virtual loopback device is unmuted and at full unity gain (1.0)
+    /// across both Output and Input scopes and owned HAL volume/mute controls.
+    private static func ensureUnmutedFullVolume(device: AudioDeviceID) {
+        let scopes: [AudioObjectPropertyScope] = [
+            kAudioObjectPropertyScopeOutput,
+            kAudioObjectPropertyScopeInput,
+            kAudioObjectPropertyScopeGlobal
+        ]
+        let elements: [AudioObjectPropertyElement] = [
+            kAudioObjectPropertyElementMain,
+            1,
+            2
+        ]
+
+        for scope in scopes {
+            for element in elements {
+                var muteAddr = AudioObjectPropertyAddress(
+                    mSelector: kAudioDevicePropertyMute,
+                    mScope: scope,
+                    mElement: element
+                )
+                if AudioObjectHasProperty(device, &muteAddr) {
+                    var settable: DarwinBoolean = false
+                    if AudioObjectIsPropertySettable(device, &muteAddr, &settable) == noErr, settable.boolValue {
+                        var unmuted: UInt32 = 0
+                        _ = AudioObjectSetPropertyData(
+                            device,
+                            &muteAddr,
+                            0,
+                            nil,
+                            UInt32(MemoryLayout<UInt32>.size),
+                            &unmuted
+                        )
+                    }
+                }
+
+                var volAddr = AudioObjectPropertyAddress(
+                    mSelector: kAudioDevicePropertyVolumeScalar,
+                    mScope: scope,
+                    mElement: element
+                )
+                if AudioObjectHasProperty(device, &volAddr) {
+                    var settable: DarwinBoolean = false
+                    if AudioObjectIsPropertySettable(device, &volAddr, &settable) == noErr, settable.boolValue {
+                        var fullVolume: Float32 = 1.0
+                        _ = AudioObjectSetPropertyData(
+                            device,
+                            &volAddr,
+                            0,
+                            nil,
+                            UInt32(MemoryLayout<Float32>.size),
+                            &fullVolume
+                        )
+                    }
+                }
+            }
+        }
+
+        var controlListAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyControlList,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var listBytes: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(device, &controlListAddr, 0, nil, &listBytes) == noErr,
+              listBytes >= UInt32(MemoryLayout<AudioObjectID>.stride) else {
+            return
+        }
+        let count = Int(listBytes) / MemoryLayout<AudioObjectID>.stride
+        var controls = [AudioObjectID](repeating: 0, count: count)
+        let status = controls.withUnsafeMutableBytes { raw in
+            AudioObjectGetPropertyData(device, &controlListAddr, 0, nil, &listBytes, raw.baseAddress!)
+        }
+        guard status == noErr else { return }
+
+        for controlID in controls {
+            var muteCtrlAddr = AudioObjectPropertyAddress(
+                mSelector: kAudioBooleanControlPropertyValue,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            if AudioObjectHasProperty(controlID, &muteCtrlAddr) {
+                var unmuted: UInt32 = 0
+                _ = AudioObjectSetPropertyData(
+                    controlID,
+                    &muteCtrlAddr,
+                    0,
+                    nil,
+                    UInt32(MemoryLayout<UInt32>.size),
+                    &unmuted
+                )
+            }
+
+            var levelCtrlAddr = AudioObjectPropertyAddress(
+                mSelector: kAudioLevelControlPropertyScalarValue,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            if AudioObjectHasProperty(controlID, &levelCtrlAddr) {
+                var fullVolume: Float32 = 1.0
+                _ = AudioObjectSetPropertyData(
+                    controlID,
+                    &levelCtrlAddr,
+                    0,
+                    nil,
+                    UInt32(MemoryLayout<Float32>.size),
+                    &fullVolume
+                )
+            }
         }
     }
 

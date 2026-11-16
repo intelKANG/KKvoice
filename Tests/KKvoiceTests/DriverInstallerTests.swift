@@ -268,6 +268,27 @@ final class DriverInstallerTests: XCTestCase {
         XCTAssertEqual(readCFString(kObjectID_Device, kAudioDevicePropertyDeviceUID), "KKvoiceMi2ch_UID")
         XCTAssertEqual(readCFString(kObjectID_Device, kAudioDevicePropertyModelUID), "KKvoiceMi2ch_ModelUID")
 
+        var transportAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var transportType: UInt32 = 0
+        var transportSize: UInt32 = 0
+        let transportStatus = interfacePtr.pointee.GetPropertyData(
+            driverRef,
+            kObjectID_Device,
+            0,
+            &transportAddress,
+            0,
+            nil,
+            UInt32(MemoryLayout<UInt32>.size),
+            &transportSize,
+            &transportType
+        )
+        XCTAssertEqual(transportStatus, noErr)
+        XCTAssertEqual(transportType, kAudioDeviceTransportTypeUSB)
+
         var rateAddress = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyNominalSampleRate,
             mScope: kAudioObjectPropertyScopeGlobal,

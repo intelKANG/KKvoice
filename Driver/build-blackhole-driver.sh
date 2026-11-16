@@ -80,6 +80,17 @@ if [[ ! -d "$src_dir/BlackHole.xcodeproj" ]] || [[ "$(tr -d '[:space:]' < "$src_
   fetch_blackhole_source "$src_dir"
 fi
 
+# Patch TransportType from kAudioDeviceTransportTypeVirtual ('virt') to kAudioDeviceTransportTypeUSB ('usb ')
+# so AVCaptureDevice-based speech apps (e.g. Doubao Input Method) discover KKvoice Mic as a selectable microphone.
+blackhole_c="$src_dir/BlackHole/BlackHole.c"
+if grep -q "kAudioDeviceTransportTypeVirtual" "$blackhole_c"; then
+  /usr/bin/sed -i '' 's/kAudioDeviceTransportTypeVirtual/kAudioDeviceTransportTypeUSB/g' "$blackhole_c"
+fi
+grep -q "kAudioDeviceTransportTypeUSB" "$blackhole_c" || {
+  print -u2 "Error: failed to patch kAudioDeviceTransportTypeUSB in $blackhole_c"
+  exit 1
+}
+
 /bin/rm -rf "$build_dir" "$output"
 
 print "Building KKvoiceMic.driver from BlackHole $BLACKHOLE_TAG..."
