@@ -17,9 +17,9 @@ struct RemoteIllustration: View {
 
     // Canonical design coordinate space (with generous margin so shadows never clip)
     private static let canvasWidth: CGFloat = 176
-    private static let canvasHeight: CGFloat = 512
+    private static let canvasHeight: CGFloat = 456
     private static let bodyWidth: CGFloat = 148
-    private static let bodyHeight: CGFloat = 476
+    private static let bodyHeight: CGFloat = 424
     private static let bodyCenterX: CGFloat = 86
     private static let bodyTopY: CGFloat = 16
 
@@ -71,7 +71,7 @@ struct RemoteIllustration: View {
         .aspectRatio(Self.canvasWidth / Self.canvasHeight, contentMode: .fit)
         .frame(
             width: compact ? 68 : 148,
-            height: compact ? 198 : 430
+            height: compact ? 176 : 384
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Google TV 语音遥控器")

@@ -100,11 +100,11 @@ struct ButtonMappingsView: View {
     @ViewBuilder
     private var statusBadge: some View {
         if hasUnsavedChanges {
-            StatusPill(title: "有未保存更改", tone: .warning, systemImage: "pencil.circle.fill")
+            StatusPill(title: "有未保存更改", tone: .warning)
         } else if let saveFeedback {
-            StatusPill(title: saveFeedback, tone: .connected, systemImage: "checkmark.circle.fill")
+            StatusPill(title: saveFeedback, tone: .connected)
         } else {
-            StatusPill(title: "已生效", tone: .connected, systemImage: "checkmark.circle")
+            StatusPill(title: "已生效", tone: .connected)
         }
     }
 
@@ -138,7 +138,7 @@ struct ButtonMappingsView: View {
 
                 Toggle("左右键切换应用", isOn: $draft.appSwitcherNavigation)
                     .labelsHidden()
-                    .toggleStyle(.switch)
+                    .toggleStyle(.kkSwitch)
                     .accessibilityLabel("左右键切换应用")
                     .onChange(of: draft.appSwitcherNavigation) { _ in
                         saveFeedback = nil
@@ -150,26 +150,26 @@ struct ButtonMappingsView: View {
     // MARK: - Center Remote + Two-Column Workbench
 
     private var mappingWorkbench: some View {
-        HStack(alignment: .center, spacing: DS.s16) {
-            // Left column (7 buttons)
-            VStack(spacing: 6) {
+        HStack(alignment: .top, spacing: DS.s16) {
+            // Left column (7 buttons, top-aligned with remote and right column)
+            VStack(spacing: 14) {
                 ForEach(Self.leftColumnItems) { item in
                     buttonRowCard(for: item, side: .left)
                 }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .top)
 
-            // Center remote stage
+            // Center remote stage (top-aligned with both card columns)
             centerRemoteStage
-                .frame(width: 168)
+                .frame(width: 168, alignment: .top)
 
-            // Right column (8 items including fixed voice card)
+            // Right column (8 items including fixed voice card, top-aligned)
             VStack(spacing: 6) {
                 ForEach(Self.rightColumnItems) { item in
                     buttonRowCard(for: item, side: .right)
                 }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .top)
         }
         .overlayPreferenceValue(MappingAnchorPrefKey.self) { prefs in
             GeometryReader { geo in
@@ -195,7 +195,7 @@ struct ButtonMappingsView: View {
                             endPoint: .bottom
                         )
                     )
-                    .frame(width: 162, height: 444)
+                    .frame(width: 160, height: 392)
                     .overlay(
                         Capsule(style: .circular)
                             .strokeBorder(DS.border, lineWidth: 1)
@@ -309,6 +309,7 @@ struct ButtonMappingsView: View {
 
                 Spacer(minLength: 0)
             }
+            .frame(minHeight: 28)
             .contentShape(Rectangle())
             .onTapGesture {
                 withAnimation(DS.stateAnimation) {
@@ -326,6 +327,7 @@ struct ButtonMappingsView: View {
         let lockedBySwitcher = isSwitcherLocked(item.id)
         let currentAction = draft.buttons[item.id] ?? .none
         let isNone = !lockedBySwitcher && currentAction.target == "none"
+        let appInfo = lockedBySwitcher ? nil : resolvedApplication(for: currentAction)
 
         return Card(
             padding: 8,
@@ -358,8 +360,16 @@ struct ButtonMappingsView: View {
 
                 Spacer(minLength: 4)
 
-                actionMenu(for: item.id, lockedBySwitcher: lockedBySwitcher)
+                if let icon = appInfo?.icon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 16, height: 16)
+                }
+
+                actionMenu(for: item.id, lockedBySwitcher: lockedBySwitcher, hasAppIcon: appInfo?.icon != nil)
             }
+            .frame(minHeight: 28)
             .contentShape(Rectangle())
             .onTapGesture {
                 withAnimation(DS.stateAnimation) {
@@ -394,10 +404,11 @@ struct ButtonMappingsView: View {
     }
 
     @ViewBuilder
-    private func actionMenu(for id: String, lockedBySwitcher: Bool) -> some View {
+    private func actionMenu(for id: String, lockedBySwitcher: Bool, hasAppIcon: Bool) -> some View {
         let action = draft.buttons[id] ?? .none
         let desired = desiredMenuChoice(for: action)
         let summary = lockedBySwitcher ? "切换应用" : actionSummary(for: id)
+        let appInfo = resolvedApplication(for: action)
 
         Menu {
             ForEach(ActionCatalog.fixed, id: \.target) { option in
@@ -429,7 +440,7 @@ struct ButtonMappingsView: View {
                 selectMenuOption(choice: chooseAppChoice, for: id)
             } label: {
                 let title = desired == chooseAppChoice
-                    ? "应用：\(action.target.components(separatedBy: ":").last ?? "")"
+                    ? "应用：\(appInfo?.displayName ?? (action.target.components(separatedBy: ":").last ?? ""))"
                     : "选择应用…"
                 if desired == chooseAppChoice {
                     Label(title, systemImage: "checkmark")
@@ -482,7 +493,7 @@ struct ButtonMappingsView: View {
         }
         .menuStyle(.borderedButton)
         .controlSize(.small)
-        .frame(width: lockedBySwitcher ? 96 : 134)
+        .frame(width: lockedBySwitcher ? 96 : (hasAppIcon ? 116 : 134))
         .disabled(lockedBySwitcher)
         .simultaneousGesture(
             TapGesture().onEnded {
@@ -607,6 +618,32 @@ struct ButtonMappingsView: View {
         draft.appSwitcherNavigation && (id == "05" || id == "06")
     }
 
+    private func resolvedApplication(for action: ButtonAction) -> (displayName: String, icon: NSImage?)? {
+        let target = action.target
+        let isFocus = target.hasPrefix("openAppFocus:")
+        let isOpen = target.hasPrefix("openApp:")
+        guard isFocus || isOpen else { return nil }
+        let prefix = isFocus ? "openAppFocus:" : "openApp:"
+        let bundleID = String(target.dropFirst(prefix.count))
+        guard !bundleID.isEmpty else { return nil }
+
+        let resolvedURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+            ?? (bundleID == "com.openai.chatgpt"
+                ? NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex")
+                : nil)
+
+        if let url = resolvedURL {
+            var name = FileManager.default.displayName(atPath: url.path)
+            if name.lowercased().hasSuffix(".app") {
+                name = String(name.dropLast(4))
+            }
+            let icon = NSWorkspace.shared.icon(forFile: url.path)
+            icon.size = NSSize(width: 16, height: 16)
+            return (name.isEmpty ? bundleID : name, icon)
+        }
+        return (bundleID, nil)
+    }
+
     private func desiredMenuChoice(for action: ButtonAction) -> String {
         if action.target.hasPrefix("shortcut:")
             || action.target.hasPrefix("key:")
@@ -632,7 +669,9 @@ struct ButtonMappingsView: View {
         case customShortcutChoice:
             return "快捷键：\(action.target)"
         case chooseAppChoice:
-            return "应用：\(action.target.components(separatedBy: ":").last ?? "")"
+            let appName = resolvedApplication(for: action)?.displayName
+                ?? (action.target.components(separatedBy: ":").last ?? "")
+            return "应用：\(appName)"
         case chooseFileChoice:
             return "文件：\(URL(fileURLWithPath: String(action.target.dropFirst("openFile:".count))).lastPathComponent)"
         case typeTextChoice:
