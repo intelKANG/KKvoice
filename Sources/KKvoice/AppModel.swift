@@ -272,7 +272,7 @@ final class AppModel: ObservableObject {
     private let keyboardSettings = KeyboardSettings()
     private var keyboardStatus = KeyboardListenerStatus()
     private var selectedDeviceUID: String?
-    private var chosenInputShortcut = ShortcutDefinition(keyName: "LeftControl")!.systemShortcut
+    private var chosenInputShortcut = ShortcutDefinition(keyName: "Fn")!.systemShortcut
 
     private lazy var voice: VoiceCoordinator = VoiceCoordinator(
         beginOutput: { [weak self] session in

@@ -3,6 +3,8 @@ import VoiceSessions
 
 /// Persist stable helper key identifiers rather than menu indexes or titles.
 struct KeyboardSettings {
+    private static let defaultKeyName = "Fn"
+    private static let disabledValue = "disabled"
     private let defaults: UserDefaults
     private let wakeKey = "keyboardWakeKey"
     private let inputKey = "inputShortcutKey"
@@ -10,25 +12,24 @@ struct KeyboardSettings {
     init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
     func wakeSelection(choices: [InputShortcut]) -> Int {
-        guard let stored = defaults.string(forKey: wakeKey) else { return 0 }
-        let definition = ShortcutDefinition(encoded: stored) ?? ShortcutDefinition(keyName: stored)
-        guard let definition, definition.supportedByLegacyKeyboardTrigger else { return 0 }
+        guard let definition = wakeDefinition() else { return 0 }
         guard definition.modifiers.isEmpty,
               let index = choices.firstIndex(where: { $0.helperKey == definition.keyName }) else { return choices.count + 1 }
         return index + 1 // Menu index zero means disabled.
     }
 
     func inputSelection(choices: [InputShortcut]) -> Int {
-        guard let stored = defaults.string(forKey: inputKey) else { return 0 }
-        let definition = ShortcutDefinition(encoded: stored) ?? ShortcutDefinition(keyName: stored)
-        guard let definition else { return 0 }
+        let definition = inputDefinition()
         guard definition.modifiers.isEmpty,
               let index = choices.firstIndex(where: { $0.helperKey == definition.keyName }) else { return choices.count }
         return index
     }
 
     func wakeDefinition() -> ShortcutDefinition? {
-        guard let raw = defaults.string(forKey: wakeKey) else { return nil }
+        guard let raw = defaults.string(forKey: wakeKey) else {
+            return ShortcutDefinition(keyName: Self.defaultKeyName)
+        }
+        if raw == Self.disabledValue { return nil }
         guard let result = ShortcutDefinition(encoded: raw) ?? ShortcutDefinition(keyName: raw),
               result.supportedByLegacyKeyboardTrigger else { return nil }
         return result
@@ -36,7 +37,7 @@ struct KeyboardSettings {
     func inputDefinition() -> ShortcutDefinition {
         if let raw = defaults.string(forKey: inputKey),
            let value = ShortcutDefinition(encoded: raw) ?? ShortcutDefinition(keyName: raw) { return value }
-        return ShortcutDefinition(keyName: "LeftControl")!
+        return ShortcutDefinition(keyName: Self.defaultKeyName)!
     }
     func saveWakeDefinition(_ value: ShortcutDefinition) {
         guard value.supportedByLegacyKeyboardTrigger else { return }
@@ -47,7 +48,7 @@ struct KeyboardSettings {
     func saveWake(selection: Int, choices: [InputShortcut]) {
         let index = selection - 1
         if choices.indices.contains(index) { defaults.set(choices[index].helperKey, forKey: wakeKey) }
-        else { defaults.removeObject(forKey: wakeKey) }
+        else { defaults.set(Self.disabledValue, forKey: wakeKey) }
     }
 
     func saveInput(selection: Int, choices: [InputShortcut]) {

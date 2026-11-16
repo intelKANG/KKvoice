@@ -9,7 +9,10 @@ final class KeyboardSettingsTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let first = KeyboardSettings(defaults: defaults)
         let choices = InputShortcut.choices
-        XCTAssertEqual(first.wakeSelection(choices: choices), 0)
+        XCTAssertEqual(first.wakeSelection(choices: choices), 1)
+        XCTAssertEqual(first.inputSelection(choices: choices), 0)
+        XCTAssertEqual(first.wakeDefinition()?.keyName, "Fn")
+        XCTAssertEqual(first.inputDefinition().keyName, "Fn")
         first.saveWake(selection: 1, choices: choices)
         first.saveInput(selection: 2, choices: choices)
         let restored = KeyboardSettings(defaults: defaults)
@@ -20,6 +23,7 @@ final class KeyboardSettingsTests: XCTestCase {
         XCTAssertEqual(reordered[restored.inputSelection(choices: reordered)].helperKey, choices[2].helperKey)
         restored.saveWake(selection: 0, choices: choices)
         XCTAssertEqual(restored.wakeSelection(choices: choices), 0)
+        XCTAssertNil(restored.wakeDefinition())
     }
 
     func testKeyboardStatusIsIndependentOfDeviceStatus() {
