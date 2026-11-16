@@ -160,10 +160,11 @@ public struct DriverInstaller: Sendable {
     public func uninstall() async throws {
         let isSystemDestination =
             destinationDirectoryURL.standardizedFileURL == Self.defaultDestinationDirectoryURL.standardizedFileURL
-        guard FileManager.default.fileExists(atPath: destinationURL.path) else {
+        guard hasAnyInstalledOrBackupBundles else {
             return
         }
         let command = Self.makeUninstallShellCommand(
+            destinationDirectoryPath: destinationDirectoryURL.path,
             destinationPath: destinationURL.path,
             restartCoreAudio: isSystemDestination
         )
@@ -177,6 +178,17 @@ public struct DriverInstaller: Sendable {
                 try? await Task.sleep(nanoseconds: 100_000_000)
             }
         }
+    }
+
+    private var hasAnyInstalledOrBackupBundles: Bool {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: destinationURL.path) {
+            return true
+        }
+        guard let entries = try? fm.contentsOfDirectory(atPath: destinationDirectoryURL.path) else {
+            return false
+        }
+        return entries.contains { $0.hasPrefix("\(Self.driverBundleName).previous") }
     }
 
     // MARK: - Command Builders
@@ -226,12 +238,16 @@ public struct DriverInstaller: Sendable {
     }
 
     internal static func makeUninstallShellCommand(
+        destinationDirectoryPath: String,
         destinationPath: String,
         restartCoreAudio: Bool
     ) -> String {
+        let destDir = shellSingleQuoted(destinationDirectoryPath)
         let dest = shellSingleQuoted(destinationPath)
+        let backupPattern = shellSingleQuoted("\(driverBundleName).previous*")
         var steps: [String] = [
-            "/bin/rm -rf \(dest)"
+            "/bin/rm -rf \(dest)",
+            "if [ -d \(destDir) ]; then /usr/bin/find \(destDir) -maxdepth 1 -name \(backupPattern) -exec /bin/rm -rf {} +; fi"
         ]
         if restartCoreAudio {
             steps.append("(/usr/bin/killall -9 coreaudiod || /usr/bin/killall coreaudiod || true)")

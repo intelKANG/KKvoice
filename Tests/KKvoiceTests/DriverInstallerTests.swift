@@ -132,7 +132,7 @@ final class DriverInstallerTests: XCTestCase {
         let installedExecContent2 = try String(contentsOf: installedExec, encoding: .utf8)
         XCTAssertTrue(installedExecContent2.contains("v2-reinstalled"))
 
-        // 3. Uninstall removes active bundle while preserving backup
+        // 3. Uninstall removes active bundle and cleans up any .previous* backups
         let uninstaller = DriverInstaller(
             destinationDirectoryURL: halDir,
             bundledDriverURLProvider: { sourceBundle },
@@ -146,7 +146,7 @@ final class DriverInstallerTests: XCTestCase {
         try await uninstaller.uninstall()
         XCTAssertFalse(uninstaller.isBundleInstalled)
         XCTAssertFalse(uninstaller.isInstalled)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: backupExec.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: backupExec.path))
     }
 
     func testMissingBundledDriverThrowsBundledDriverNotFound() async {
