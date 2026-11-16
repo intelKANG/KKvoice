@@ -40,7 +40,7 @@ struct GeneralView: View {
                 ) {
                     Toggle("", isOn: launchBinding)
                         .labelsHidden()
-                        .toggleStyle(.switch)
+                        .toggleStyle(.kkSwitch)
                         .accessibilityLabel("开机启动")
                 }
 

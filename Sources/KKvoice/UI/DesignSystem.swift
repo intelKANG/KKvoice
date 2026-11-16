@@ -194,11 +194,12 @@ struct StatusPill: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            StatusDot(tone: tone, size: 7)
-            if let systemImage {
+            if let systemImage, systemImage == "lock.fill" {
                 Image(systemName: systemImage)
                     .font(.caption)
                     .foregroundStyle(tone.color)
+            } else {
+                StatusDot(tone: tone, size: 7)
             }
             Text(title)
                 .font(.caption.weight(.medium))
@@ -218,6 +219,44 @@ struct StatusPill: View {
         .animation(DS.stateAnimation, value: tone)
         .animation(DS.stateAnimation, value: title)
     }
+}
+
+struct AccentSwitchToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: DS.s8) {
+            configuration.label
+            Button {
+                withAnimation(DS.stateAnimation) {
+                    configuration.isOn.toggle()
+                }
+            } label: {
+                ZStack(alignment: configuration.isOn ? .trailing : .leading) {
+                    Capsule(style: .continuous)
+                        .fill(configuration.isOn ? Color.accentColor : Color.primary.opacity(0.16))
+                        .frame(width: 38, height: 22)
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder(
+                                    configuration.isOn ? Color.accentColor.opacity(0.3) : Color.primary.opacity(0.10),
+                                    lineWidth: 1
+                                )
+                        )
+
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 18, height: 18)
+                        .shadow(color: Color.black.opacity(0.18), radius: 1.5, x: 0, y: 1)
+                        .padding(2)
+                }
+                .animation(DS.stateAnimation, value: configuration.isOn)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+extension ToggleStyle where Self == AccentSwitchToggleStyle {
+    static var kkSwitch: AccentSwitchToggleStyle { AccentSwitchToggleStyle() }
 }
 
 struct LabeledRow<Content: View>: View {
@@ -250,13 +289,16 @@ struct LabeledRow<Content: View>: View {
                     Text(label)
                         .font(.body)
                         .foregroundStyle(.primary)
+                        .lineLimit(1)
                     if let subtitle, !subtitle.isEmpty {
                         Text(subtitle)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
+            .layoutPriority(1)
             Spacer(minLength: DS.s12)
             content()
         }

@@ -41,14 +41,13 @@ struct ConnectionView: View {
         ) {
             StatusPill(
                 title: model.connectionPhase.badgeTitle,
-                tone: model.connectionPhase.tone,
-                systemImage: phaseSymbol
+                tone: model.connectionPhase.tone
             )
         } content: {
             VStack(alignment: .leading, spacing: DS.s16) {
                 HStack(alignment: .top, spacing: DS.s20) {
                     deviceHeroCard
-                        .frame(width: 286)
+                        .frame(width: 264)
 
                     VStack(alignment: .leading, spacing: DS.s16) {
                         statusCard
@@ -483,7 +482,7 @@ struct ConnectionView: View {
 
                 LabeledRow(
                     "虚拟麦克风",
-                    subtitle: "将遥控器语音写入该虚拟设备供输入软件读取",
+                    subtitle: "将遥控器语音写入该虚拟设备",
                     systemImage: "mic.and.signal.meter"
                 ) {
                     HStack(spacing: DS.s8) {
@@ -492,7 +491,7 @@ struct ConnectionView: View {
                                 Text(model.emptyDevicePlaceholderTitle).tag(0)
                             }
                             .labelsHidden()
-                            .frame(width: 240)
+                            .frame(width: 200)
                             .disabled(true)
                         } else {
                             Picker("", selection: $model.selectedDeviceIndex) {
@@ -501,7 +500,7 @@ struct ConnectionView: View {
                                 }
                             }
                             .labelsHidden()
-                            .frame(width: 240)
+                            .frame(width: 200)
                             .disabled(model.isControlsLocked)
                         }
 
@@ -537,7 +536,7 @@ struct ConnectionView: View {
 
                 LabeledRow(
                     "电脑唤醒键",
-                    subtitle: "在 Mac 键盘上触发遥控器收音的全局快捷键",
+                    subtitle: "Mac 键盘触发收音的全局快捷键",
                     systemImage: "command.square"
                 ) {
                     HStack(spacing: DS.s8) {
@@ -547,7 +546,7 @@ struct ConnectionView: View {
                             }
                         }
                         .labelsHidden()
-                        .frame(width: 210)
+                        .frame(width: 185)
                         .disabled(model.isControlsLocked)
 
                         if model.wakeSelectionIndex == InputShortcut.choices.count + 1 {
@@ -565,7 +564,7 @@ struct ConnectionView: View {
 
                 LabeledRow(
                     "输入软件快捷键",
-                    subtitle: "收音就绪后自动发送给语音输入软件（豆包 / 微信 / Typeless / Vokie）",
+                    subtitle: "收音就绪后发送给语音输入软件",
                     systemImage: "bolt.horizontal.circle"
                 ) {
                     HStack(spacing: DS.s8) {
@@ -575,7 +574,7 @@ struct ConnectionView: View {
                             }
                         }
                         .labelsHidden()
-                        .frame(width: 210)
+                        .frame(width: 185)
                         .disabled(model.isControlsLocked)
 
                         if model.inputSelectionIndex == InputShortcut.choices.count {
@@ -593,7 +592,7 @@ struct ConnectionView: View {
 
                 LabeledRow(
                     "遥控器语音键",
-                    subtitle: "控制按下遥控器 Google 助理键时的收音行为",
+                    subtitle: "按下遥控器语音键时的收音模式",
                     systemImage: "mic.circle"
                 ) {
                     Picker("", selection: voiceModeBinding) {
@@ -602,7 +601,7 @@ struct ConnectionView: View {
                         }
                     }
                     .labelsHidden()
-                    .frame(width: 240)
+                    .frame(width: 200)
                     .disabled(model.isControlsLocked)
                 }
             }

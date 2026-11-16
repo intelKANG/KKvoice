@@ -57,17 +57,43 @@ final class KKvoiceAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         model.connect()
     }
 
-    private func installMenuBarItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        let imageURL = Bundle.main.resourceURL?.appendingPathComponent("KKvoice-logo.png")
-        let source = imageURL.flatMap { NSImage(contentsOf: $0) } ?? NSImage(size: NSSize(width: 18, height: 18))
-        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
-            source.draw(in: rect)
-            NSColor.white.setFill()
+    static func makeMenuBarTemplateImage() -> NSImage {
+        let bundled = Bundle.main.resourceURL?.appendingPathComponent("KKvoice-logo.png")
+        let repoFallback = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Native/Assets/KKvoice-logo.png")
+        let source = bundled.flatMap { NSImage(contentsOf: $0) }
+            ?? NSImage(contentsOf: repoFallback)
+            ?? NSImage(size: NSSize(width: 18, height: 18))
+
+        let canvasSize = NSSize(width: 18, height: 18)
+        let image = NSImage(size: canvasSize, flipped: false) { rect in
+            let srcSize = source.size
+            let scale = (srcSize.width > 0 && srcSize.height > 0)
+                ? min(rect.width / srcSize.width, rect.height / srcSize.height)
+                : 1.0
+            let drawW = srcSize.width * scale
+            let drawH = srcSize.height * scale
+            let drawRect = NSRect(
+                x: rect.midX - drawW / 2,
+                y: rect.midY - drawH / 2,
+                width: drawW,
+                height: drawH
+            )
+            source.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 1.0)
+            NSColor.black.setFill()
             rect.fill(using: .sourceIn)
             return true
         }
-        image.isTemplate = false
+        image.isTemplate = true
+        return image
+    }
+
+    private func installMenuBarItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let image = Self.makeMenuBarTemplateImage()
         item.button?.image = image
         item.button?.toolTip = "KKvoice"
         item.button?.target = self
