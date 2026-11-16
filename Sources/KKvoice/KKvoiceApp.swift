@@ -68,7 +68,9 @@ final class KKvoiceAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
         window.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
-        model.connect()
+        if model.checkAndPromptDriverOnLaunch() {
+            model.connect()
+        }
     }
 
     static func makeMenuBarTemplateImage() -> NSImage {

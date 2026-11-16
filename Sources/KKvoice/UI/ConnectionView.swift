@@ -128,7 +128,7 @@ struct ConnectionView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                if model.canConnect {
+                if !model.isSessionActive {
                     Button {
                         model.connect()
                     } label: {
@@ -141,7 +141,14 @@ struct ConnectionView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .help("连接遥控器")
+                    .disabled(!model.canConnect)
+                    .help(model.availableDevices.isEmpty ? "请先安装 KKvoice Mic" : "连接遥控器")
+
+                    if model.availableDevices.isEmpty {
+                        Text("需先安装 KKvoice Mic 才可连接")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
                 } else {
                     Button {
                         model.disconnect()
@@ -504,19 +511,54 @@ struct ConnectionView: View {
                 }
 
                 if model.availableDevices.isEmpty {
-                    HStack(alignment: .top, spacing: DS.s8) {
-                        Image(systemName: "info.circle.fill")
+                    HStack(alignment: .center, spacing: DS.s12) {
+                        Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
-                        Text("未检测到虚拟麦克风，安装驱动后刷新")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("需要安装 KKvoice Mic")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.primary)
+                            if let err = model.driverInstallError {
+                                Text(err)
+                                    .font(.caption2)
+                                    .foregroundStyle(.red)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } else if let msg = model.driverInstallMessage {
+                                Text(msg)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        Spacer(minLength: DS.s8)
+
+                        if model.isDriverInstalling {
+                            HStack(spacing: 6) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text("安装中…")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Button("安装 KKvoice Mic") {
+                                model.installDriver(reinstall: false)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .disabled(model.isControlsLocked)
+                        }
                     }
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         RoundedRectangle(cornerRadius: DS.controlRadius, style: .continuous)
-                            .fill(Color.orange.opacity(0.08))
+                            .fill(Color.orange.opacity(0.10))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DS.controlRadius, style: .continuous)
+                            .strokeBorder(Color.orange.opacity(0.30), lineWidth: 1)
                     )
                 }
 

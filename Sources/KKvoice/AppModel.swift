@@ -164,6 +164,9 @@ final class AppModel: ObservableObject {
     @Published var availableDevices: [KKAudioOutputDevice] = []
     @Published var selectedDeviceIndex: Int = 0
     @Published var deviceLoadFailed: Bool = false
+    @Published var isDriverInstalling: Bool = false
+    @Published var driverInstallMessage: String? = nil
+    @Published var driverInstallError: String? = nil
 
     @Published var availableMacMics: [KKAudioInputDevice] = []
     @Published var selectedMacMicUID: String = ""
@@ -272,10 +275,13 @@ final class AppModel: ObservableObject {
         allowKeyboardFallbackWhenNotReady: true
     )
 
-    var canConnect: Bool { !isSessionActive }
+    var canConnect: Bool { !isSessionActive && !availableDevices.isEmpty && !isDriverInstalling }
     var canDisconnect: Bool { isSessionActive }
     var canCaptureShortcut: Bool { !isSessionActive }
     var isControlsLocked: Bool { isSessionActive }
+    var isKKvoiceMicAvailable: Bool {
+        availableDevices.contains(where: { $0.uid == DriverInstaller.deviceUID })
+    }
 
     var wakeKeyTitles: [String] {
         ["不启用"] + InputShortcut.choices.map(\.name) + [customWakeTitle]
@@ -460,6 +466,57 @@ final class AppModel: ObservableObject {
         return audioRouter.activeOrStandbySource(remoteReady: voiceChannelReady)
     }
 
+    func installDriver(reinstall: Bool = false, autoConnectAfterInstall: Bool = false) {
+        guard !isDriverInstalling else { return }
+        guard !isSessionActive else {
+            statusText = "断开遥控器后可安装驱动"
+            return
+        }
+        isDriverInstalling = true
+        driverInstallError = nil
+        driverInstallMessage = reinstall ? "正在重新安装 KKvoice Mic…" : "正在安装 KKvoice Mic…"
+        statusText = driverInstallMessage ?? "正在安装驱动…"
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await DriverInstaller.install()
+                self.refreshDevices()
+                self.isDriverInstalling = false
+                self.driverInstallError = nil
+                self.driverInstallMessage = "KKvoice Mic 已就绪"
+                self.statusText = "KKvoice Mic 已安装"
+                if autoConnectAfterInstall && self.canConnect {
+                    self.connect()
+                }
+            } catch {
+                self.isDriverInstalling = false
+                self.driverInstallMessage = nil
+                let message = error.localizedDescription
+                self.driverInstallError = message
+                self.statusText = message
+            }
+        }
+    }
+
+    @discardableResult
+    func checkAndPromptDriverOnLaunch() -> Bool {
+        if isKKvoiceMicAvailable || DriverInstaller.isDeviceAvailable {
+            return true
+        }
+        statusText = "需要安装 KKvoice Mic"
+        let alert = NSAlert()
+        alert.messageText = "需要安装 KKvoice Mic 才能使用"
+        alert.informativeText = "点击「安装」并授权管理员权限，即可完成内置虚拟麦克风驱动安装。"
+        alert.addButton(withTitle: "安装")
+        alert.addButton(withTitle: "稍后")
+        alert.window.appearance = Self.currentWindowAppearance
+        if alert.runModal() == .alertFirstButtonReturn {
+            installDriver(reinstall: false, autoConnectAfterInstall: true)
+        }
+        return false
+    }
+
     func deviceDisplayTitle(_ device: KKAudioOutputDevice) -> String {
         device.name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -585,7 +642,12 @@ final class AppModel: ObservableObject {
     // MARK: - Connection & SnapNote
 
     func connect() {
-        guard canConnect else { return }
+        guard !isSessionActive else { return }
+        guard !availableDevices.isEmpty else {
+            statusText = "需要安装 KKvoice Mic"
+            return
+        }
+        guard !isDriverInstalling else { return }
         guard let resourceURL = Bundle.main.resourceURL else {
             statusText = "找不到应用资源。"
             return

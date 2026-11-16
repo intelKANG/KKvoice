@@ -92,8 +92,42 @@ struct GeneralView: View {
                         .toggleStyle(.kkSwitch)
                         .accessibilityLabel("菜单栏图标")
                 }
+
+                CardDivider()
+
+                LabeledRow(
+                    "虚拟麦克风驱动",
+                    subtitle: driverRowSubtitle,
+                    systemImage: "waveform.badge.mic"
+                ) {
+                    if model.isDriverInstalling {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("安装中…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Button(model.isKKvoiceMicAvailable ? "重新安装驱动" : "安装 KKvoice Mic") {
+                            model.installDriver(reinstall: true)
+                        }
+                        .controlSize(.small)
+                        .disabled(model.isControlsLocked)
+                    }
+                }
             }
         }
+    }
+
+    private var driverRowSubtitle: String {
+        if let err = model.driverInstallError {
+            return err
+        }
+        if let msg = model.driverInstallMessage {
+            return msg
+        }
+        return model.isKKvoiceMicAvailable ? "KKvoice Mic 已安装" : "尚未安装 KKvoice Mic"
     }
 
     private var permissionsCard: some View {
