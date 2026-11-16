@@ -412,9 +412,9 @@ struct ButtonMappingsView: View {
                 selectMenuOption(choice: snapnoteChoice, for: id)
             } label: {
                 if desired == snapnoteChoice {
-                    Label("新建闪念笔记", systemImage: "checkmark")
+                    Label("新建快速笔记", systemImage: "checkmark")
                 } else {
-                    Text("新建闪念笔记")
+                    Text("新建快速笔记")
                 }
             }
         } label: {
@@ -608,7 +608,7 @@ struct ButtonMappingsView: View {
         case typeTextChoice:
             return "输入文字"
         case snapnoteChoice:
-            return "新建闪念笔记"
+            return "新建快速笔记"
         default:
             return ActionCatalog.fixed.first(where: { $0.target == action.target })?.label ?? action.target
         }

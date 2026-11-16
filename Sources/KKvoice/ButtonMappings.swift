@@ -138,7 +138,7 @@ final class ButtonActionDispatcher {
          sendShortcut: @escaping (ShortcutDefinition) throws -> Void = { try SystemShortcutSender.send($0.systemShortcut) },
          cancelVoice: @escaping () -> Void, status: @escaping (String) -> Void) {
         self.mappings = mappings; self.send = send; self.sendShortcut = sendShortcut; self.cancelVoice = cancelVoice; self.status = status
-        self.createSnapNote = { status("未配置闪念笔记") }
+        self.createSnapNote = { status("未配置快速笔记") }
     }
     func reset() { pressed.removeAll(); switcherActive = false }
     func deviceDisconnected() {
