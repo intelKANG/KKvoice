@@ -5,10 +5,7 @@ struct AboutView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        PageScaffold(
-            title: "关于",
-            subtitle: "版本信息与开源项目鸣谢"
-        ) {
+        PageScaffold(title: "关于") {
             VStack(alignment: .leading, spacing: DS.s16) {
                 brandHeroCard
                 acknowledgementsCard
@@ -38,7 +35,7 @@ struct AboutView: View {
                             )
                     }
 
-                    Text("将 Google Chromecast / Google TV 语音遥控器打造为 macOS 无线语音麦克风与自定义快捷控制器。")
+                    Text("Google TV 遥控器语音输入与按键映射工具")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -52,40 +49,36 @@ struct AboutView: View {
     private var acknowledgementsCard: some View {
         Card(padding: DS.s20) {
             VStack(alignment: .leading, spacing: DS.s16) {
-                SectionHeader(
-                    "鸣谢开源项目",
-                    subtitle: "KKvoice 的实现参考并受益于以下开源项目",
-                    systemImage: "heart.text.square"
-                )
+                SectionHeader("开源鸣谢", systemImage: "heart.text.square")
 
                 CardDivider()
 
                 LabeledRow(
                     "BlackHole",
-                    subtitle: "ExistentialAudio · 虚拟音频驱动基础",
+                    subtitle: "虚拟音频驱动",
                     systemImage: "waveform.circle"
                 ) {
                     Button {
                         model.openExternalURL("https://github.com/ExistentialAudio/BlackHole")
                     } label: {
-                        Label("BlackHole GitHub", systemImage: "arrow.up.right.square")
+                        Label("GitHub", systemImage: "arrow.up.right.square")
                     }
-                    .help("在浏览器中打开 BlackHole GitHub 仓库")
+                    .help("打开 GitHub")
                 }
 
                 CardDivider()
 
                 LabeledRow(
                     "vRemoter",
-                    subtitle: "VincentKingHsu · 遥控器与音频驱动实现参考",
+                    subtitle: "遥控器与音频驱动参考",
                     systemImage: "appletvremote.gen4"
                 ) {
                     Button {
                         model.openExternalURL("https://github.com/VincentKingHsu/vRemoter")
                     } label: {
-                        Label("vRemoter GitHub", systemImage: "arrow.up.right.square")
+                        Label("GitHub", systemImage: "arrow.up.right.square")
                     }
-                    .help("在浏览器中打开 vRemoter GitHub 仓库")
+                    .help("打开 GitHub")
                 }
             }
         }

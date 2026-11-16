@@ -68,13 +68,13 @@ enum ConnectionPhase: Equatable {
         case .disconnected:
             return "未连接"
         case .connecting:
-            return "正在查找"
+            return "连接中"
         case .keysConnected:
             return "按键已连"
         case .voiceReady:
             return "已连接"
         case .recording:
-            return "录音中"
+            return "收音中"
         case .permissionRequired:
             return "需要权限"
         case .error:
@@ -85,19 +85,19 @@ enum ConnectionPhase: Equatable {
     var headlineTitle: String {
         switch self {
         case .disconnected:
-            return "未连接遥控器"
+            return "未连接"
         case .connecting:
-            return "正在查找遥控器…"
+            return "正在连接…"
         case .keysConnected:
-            return "按键通道已就绪"
+            return "按键已就绪"
         case .voiceReady:
-            return "遥控器已连接"
+            return "已连接"
         case .recording:
-            return "正在收音…"
+            return "收音中"
         case .permissionRequired:
-            return "需要系统权限"
+            return "需要权限"
         case .error:
-            return "遥控器暂不可用"
+            return "连接异常"
         }
     }
 }
@@ -106,8 +106,8 @@ enum ConnectionPhase: Equatable {
 final class AppModel: ObservableObject {
     @Published var selectedTab: SidebarTab = .connection
     @Published var connectionPhase: ConnectionPhase = .disconnected
-    @Published var statusText: String = "尚未连接"
-    @Published var keyboardStatusText: String = "键盘监听：未连接"
+    @Published var statusText: String = "未连接"
+    @Published var keyboardStatusText: String = "未连接"
     @Published var keyboardState: KeyboardListenerStatus.State = .stopped
 
     @Published var isSessionActive: Bool = false
@@ -125,8 +125,8 @@ final class AppModel: ObservableObject {
     @Published var wakeSelectionIndex: Int = 0
     @Published var inputSelectionIndex: Int = 0
     @Published var voiceModeIndex: Int = 0
-    @Published var customWakeTitle: String = "自定义快捷键…"
-    @Published var customInputTitle: String = "自定义快捷键…"
+    @Published var customWakeTitle: String = "自定义…"
+    @Published var customInputTitle: String = "自定义…"
 
     @Published var launchAtLogin: Bool = false
     @Published var loginItemRequiresApproval: Bool = false
@@ -167,7 +167,7 @@ final class AppModel: ObservableObject {
     private lazy var voice: VoiceCoordinator = VoiceCoordinator(
         beginOutput: { [weak self] session in
             guard let self, let uid = self.selectedDeviceUID else {
-                throw NSError(domain: "KKvoice", code: 10, userInfo: [NSLocalizedDescriptionKey: "请选择已安装的虚拟音频设备。"])
+                throw NSError(domain: "KKvoice", code: 10, userInfo: [NSLocalizedDescriptionKey: "未选择虚拟麦克风"])
             }
             let audioID = try self.audio.start(deviceUID: uid)
             self.outputSessions[session] = audioID
@@ -262,11 +262,11 @@ final class AppModel: ObservableObject {
     }
 
     func deviceDisplayTitle(_ device: KKAudioOutputDevice) -> String {
-        "\(device.name.trimmingCharacters(in: .whitespacesAndNewlines)) (\(device.uid))"
+        device.name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var emptyDevicePlaceholderTitle: String {
-        deviceLoadFailed ? "无法读取音频设备" : "未找到虚拟音频设备"
+        deviceLoadFailed ? "读取设备失败" : "无可用虚拟麦克风"
     }
 
     func selectWakeKey(at index: Int) {
@@ -324,12 +324,12 @@ final class AppModel: ObservableObject {
            let definition = keyboardSettings.wakeDefinition() {
             customWakeTitle = "自定义：\(definition.encoded)"
         } else {
-            customWakeTitle = "自定义快捷键…"
+            customWakeTitle = "自定义…"
         }
         if keyboardSettings.inputSelection(choices: choices) == choices.count {
             customInputTitle = "自定义：\(keyboardSettings.inputDefinition().encoded)"
         } else {
-            customInputTitle = "自定义快捷键…"
+            customInputTitle = "自定义…"
         }
     }
 
@@ -341,7 +341,7 @@ final class AppModel: ObservableObject {
             launchAtLogin = current == .enabled
             loginItemRequiresApproval = current == .requiresApproval
             if current == .requiresApproval {
-                statusText = "请在系统设置的登录项中允许 KKvoice 开机启动。"
+                statusText = "需在系统设置「登录项」中允许"
             }
         } catch {
             let current = SMAppService.mainApp.status
@@ -362,7 +362,7 @@ final class AppModel: ObservableObject {
         chosenInputShortcut = keyboardSettings.inputDefinition().systemShortcut
         let wakeDefinition = keyboardSettings.wakeDefinition()
         guard voice.setRemoteGesture(voiceModeIndex == 1 ? .hybrid : .toggle) else {
-            statusText = "请先结束当前收音。"
+            statusText = "收音中，无法操作"
             return
         }
         // Start the remote audio route before Vokie receives its toggle. Passing
@@ -370,7 +370,7 @@ final class AppModel: ObservableObject {
         // has attached to the virtual microphone, which yields an empty recording.
         let passThrough = false
         guard voice.setKeyboardPassThrough(passThrough) else {
-            statusText = "请先结束当前收音。"
+            statusText = "收音中，无法操作"
             return
         }
         let selectedWake = wakeDefinition?.keyName
@@ -422,14 +422,14 @@ final class AppModel: ObservableObject {
 
     func pickSnapNoteShortcut(currentEncoded: String? = nil) -> String? {
         guard canCaptureShortcut else {
-            statusText = "请先断开遥控器，再修改闪念设置。"
+            statusText = "断开遥控器后可修改"
             return nil
         }
         let source = currentEncoded ?? UserDefaults.standard.string(forKey: snapShortcutKey)
         let previous = source.flatMap(ShortcutDefinition.init(encoded:))
         guard let selected = ShortcutPicker.prompt(previous: previous, globalWake: false),
               SnapNoteCoordinator.validShortcut(selected.encoded) else {
-            statusText = "请设置带修饰键的闪念新建快捷键。"
+            statusText = "新建快捷键需包含修饰键"
             return nil
         }
         return selected.encoded
@@ -438,7 +438,7 @@ final class AppModel: ObservableObject {
     @discardableResult
     func saveSnapNoteConfiguration(token: String, shortcutEncoded: String?) -> Bool {
         guard canCaptureShortcut else {
-            statusText = "请先断开遥控器，再修改闪念设置。"
+            statusText = "断开遥控器后可修改"
             return false
         }
         do {
@@ -448,22 +448,22 @@ final class AppModel: ObservableObject {
             }
             guard let encoded = shortcutEncoded,
                   SnapNoteCoordinator.validShortcut(encoded) else {
-                statusText = "请设置带修饰键的闪念新建快捷键。"
+                statusText = "新建快捷键需包含修饰键"
                 return false
             }
             UserDefaults.standard.set(encoded, forKey: snapShortcutKey)
             snapNoteShortcut = encoded
-            statusText = "闪念快捷键已保存；请确认与闪念笔记设置一致。"
+            statusText = "已保存"
             return true
         } catch {
-            statusText = "无法保存闪念令牌：\(error.localizedDescription)"
+            statusText = "Token 保存失败：\(error.localizedDescription)"
             return false
         }
     }
 
     func configureSnapNoteModal() {
         guard canCaptureShortcut else {
-            statusText = "请先断开遥控器，再修改闪念设置。"
+            statusText = "断开遥控器后可修改"
             return
         }
         let alert = NSAlert()
@@ -483,28 +483,28 @@ final class AppModel: ObservableObject {
             let previous = UserDefaults.standard.string(forKey: snapShortcutKey).flatMap(ShortcutDefinition.init(encoded:))
             guard let selected = ShortcutPicker.prompt(previous: previous, globalWake: false),
                   SnapNoteCoordinator.validShortcut(selected.encoded) else {
-                statusText = "请设置带修饰键的闪念新建快捷键。"
+                statusText = "新建快捷键需包含修饰键"
                 return
             }
             UserDefaults.standard.set(selected.encoded, forKey: snapShortcutKey)
             snapNoteShortcut = selected.encoded
-            statusText = "闪念快捷键已保存；请确认与闪念笔记设置一致。"
+            statusText = "已保存"
         } catch {
-            statusText = "无法保存闪念令牌：\(error.localizedDescription)"
+            statusText = "Token 保存失败：\(error.localizedDescription)"
         }
     }
 
     func createSnapNote() {
-        guard snapTask == nil else { statusText = "闪念笔记操作进行中。"; return }
-        guard let adapter = snapAdapter else { statusText = "请先连接遥控器。"; return }
-        guard case .idle = voice.phase else { statusText = "请先结束语音输入。"; return }
+        guard snapTask == nil else { statusText = "正在创建闪念笔记…"; return }
+        guard let adapter = snapAdapter else { statusText = "未连接遥控器"; return }
+        guard case .idle = voice.phase else { statusText = "收音中，无法操作"; return }
         guard let shortcut = UserDefaults.standard.string(forKey: snapShortcutKey) else {
-            statusText = "请先配置闪念笔记快捷键。"
+            statusText = "未设置闪念笔记快捷键"
             return
         }
         do {
             guard let token = try snapTokenStore.load() else {
-                statusText = "请先配置闪念笔记 Token。"
+                statusText = "未配置闪念笔记 Token"
                 return
             }
             let client = try SnapNoteMCPClient(token: token)
@@ -517,9 +517,9 @@ final class AppModel: ObservableObject {
                 guard let self else { return }
                 self.snapTask = nil
                 if result.succeeded {
-                    self.statusText = "闪念笔记已创建并添加标签。"
+                    self.statusText = "已创建闪念笔记"
                 } else if result.noteMayExist {
-                    self.statusText = "闪念操作未完成，笔记可能已创建，请检查后再试。"
+                    self.statusText = "操作未完成，笔记可能已创建"
                 } else {
                     self.statusText = "闪念操作未完成：\(String(describing: result.error))"
                 }
@@ -550,27 +550,27 @@ final class AppModel: ObservableObject {
             voice.setReady(true)
             voiceChannelReady = true
             requiredPermission = nil
-            statusText = "遥控器语音通道已连接"
+            statusText = "已连接"
             syncVoicePhase()
         case "hid_connected":
             hidConnected = true
-            statusText = "已检测到遥控器按键"
+            statusText = "按键已连接"
             syncVoicePhase()
         case "scanning":
-            statusText = "正在查找遥控器…"
+            statusText = "正在连接…"
             if !voiceChannelReady && !hidConnected {
                 connectionPhase = .connecting
             }
         case "ble_disconnected", "bluetooth_off":
             voice.setReady(false)
             voiceChannelReady = false
-            statusText = "遥控器蓝牙已断开"
+            statusText = "蓝牙已断开"
             syncVoicePhase()
         case "hid_disconnected":
             buttonDispatcher.deviceDisconnected()
             hidConnected = false
             lastPressedButtonID = nil
-            statusText = "遥控器按键已断开"
+            statusText = "按键已断开"
             syncVoicePhase()
         case "button_down":
             if let id = message["buttonId"] as? String {
@@ -590,7 +590,7 @@ final class AppModel: ObservableObject {
             statusText = message["message"] as? String ?? "按键动作失败。"
         case "voice_press":
             guard snapTask == nil else {
-                statusText = "闪念操作进行中，请稍候再录音。"
+                statusText = "正在创建闪念笔记，稍后再试"
                 return
             }
             voice.press(.remote)
@@ -600,7 +600,7 @@ final class AppModel: ObservableObject {
             syncVoicePhase()
         case "keyboard_trigger_down":
             guard snapTask == nil else {
-                statusText = "闪念操作进行中，请稍候再录音。"
+                statusText = "正在创建闪念笔记，稍后再试"
                 return
             }
             voice.press(.keyboard)
@@ -616,20 +616,20 @@ final class AppModel: ObservableObject {
             voice.cancelWithoutSubmitting()
             syncVoicePhase()
         case "capture_probe_started":
-            statusText = "正在确认遥控器语音请求…"
+            statusText = "正在启动收音…"
         case "capture_probe_timeout":
-            statusText = "未建立语音会话，已停止遥控器收音。"
+            statusText = "收音未启动"
             syncVoicePhase()
         case "audio_start":
             voice.audioStarted()
             recordingFrames = 0
             syncVoicePhase()
         case "audio_reopen_requested":
-            statusText = "正在恢复遥控器收音…"
+            statusText = "正在恢复收音…"
         case "audio_stream_progress":
             if case .recording = voice.phase, let frames = message["frames"] as? Int {
                 recordingFrames = frames
-                statusText = "遥控器收音中，已接收 \(frames) 帧。"
+                statusText = "收音中（\(frames) 帧）"
                 startInputAppWatchdog()
             }
             syncVoicePhase()
@@ -641,9 +641,9 @@ final class AppModel: ObservableObject {
             _ = audio.receive(pcm, session: session)
         case "mic_open_error":
             if let code = message["code"] as? NSNumber {
-                voice.audioFailed("遥控器麦克风未能开启（错误码 \(code.uint64Value)）。")
+                voice.audioFailed("麦克风开启失败（\(code.uint64Value)）")
             } else {
-                voice.audioFailed("遥控器麦克风未能开启。")
+                voice.audioFailed("麦克风开启失败")
             }
             syncVoicePhase()
         case "permission_required":
@@ -653,13 +653,13 @@ final class AppModel: ObservableObject {
             requiredPermission = perm
             switch perm {
             case "accessibility":
-                statusText = "请在系统设置中允许 KKvoice Remote Helper 使用辅助功能。"
+                statusText = "需要辅助功能权限"
             case "input-monitoring":
-                statusText = "请在系统设置中允许 KKvoice Remote Helper 进行输入监控。"
+                statusText = "需要输入监控权限"
             case "bluetooth":
-                statusText = "请在系统设置中允许 KKvoice Remote Helper 使用蓝牙。"
+                statusText = "需要蓝牙权限"
             default:
-                statusText = "请检查系统权限设置。"
+                statusText = "需要系统权限"
             }
             connectionPhase = .permissionRequired(perm)
         case "device_error", "device_not_found":
@@ -742,7 +742,7 @@ final class AppModel: ObservableObject {
                     guard self.inputAppInactiveSamples >= 3 else { return }
                     self.voice.cancelWithoutSubmitting()
                     self.stopInputAppWatchdog()
-                    self.statusText = "Vokie 已结束或取消录音，遥控器收音已关闭。"
+                    self.statusText = "输入软件已结束，收音已停止"
                     self.syncVoicePhase()
                 }
             }
@@ -782,13 +782,13 @@ final class AppModel: ObservableObject {
     func permissionDescription(for permission: String) -> String {
         switch permission {
         case "accessibility":
-            return "请在系统设置 › 隐私与安全性 › 辅助功能中允许 KKvoice Remote Helper，以启用按键动作与唤醒键监听。"
+            return "在「隐私与安全性 › 辅助功能」中允许 KKvoice Remote Helper"
         case "input-monitoring":
-            return "请在系统设置 › 隐私与安全性 › 输入监控中允许 KKvoice Remote Helper，以读取遥控器按键事件。"
+            return "在「隐私与安全性 › 输入监控」中允许 KKvoice Remote Helper"
         case "bluetooth":
-            return "请在系统设置 › 隐私与安全性 › 蓝牙中允许 KKvoice Remote Helper，以连接 Chromecast 遥控器语音通道。"
+            return "在「隐私与安全性 › 蓝牙」中允许 KKvoice Remote Helper"
         default:
-            return "请检查系统设置 › 隐私与安全性中的权限配置。"
+            return "检查「隐私与安全性」权限设置"
         }
     }
 

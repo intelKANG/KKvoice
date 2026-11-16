@@ -78,12 +78,12 @@ struct KeyboardListenerStatus {
 
     var text: String {
         switch state {
-        case .disabled: return "键盘监听：未启用"
-        case .stopped: return "键盘监听：未连接"
-        case .starting: return "键盘监听：正在启动"
-        case .ready: return "键盘监听：已启用"
-        case .permissionRequired: return "键盘监听：需要辅助功能权限"
-        case .failed: return "键盘监听：启动失败"
+        case .disabled: return "未启用"
+        case .stopped: return "未连接"
+        case .starting: return "启动中"
+        case .ready: return "已启用"
+        case .permissionRequired: return "需要辅助功能权限"
+        case .failed: return "启动失败"
         }
     }
 }

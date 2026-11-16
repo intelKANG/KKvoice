@@ -133,13 +133,6 @@ struct MainView: View {
                 )
                 Spacer(minLength: 0)
             }
-
-            Text(model.statusText)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 4)
         }
     }
 

@@ -60,7 +60,7 @@ final class VoiceCoordinator {
             if deferredToggle != nil {
                 deferredToggle = nil
                 needsRecovery = true
-                report("唤醒键状态中断，请手动检查输入软件。")
+                report("唤醒键中断，请检查输入软件状态")
             }
             keyboardHeld = false
         }
@@ -71,12 +71,12 @@ final class VoiceCoordinator {
             if source == .keyboard && keyboardPassThrough {
                 passedThroughWhileUnavailable = true
                 needsRecovery = true
-                report("物理快捷键已透传，但遥控器未就绪；请确认输入软件已停止。")
-            } else { report("遥控器尚未连接。") }
+                report("遥控器未就绪，请检查输入软件状态")
+            } else { report("未连接遥控器") }
             return
         }
         guard deferredToggle == nil else { report("等待释放唤醒键。") ; return }
-        guard !needsRecovery else { report("输入软件状态未确认，请先检查并确认已停止。") ; return }
+        guard !needsRecovery else { report("输入软件状态未确认") ; return }
         apply(relay.handle(session.press(source, at: ProcessInfo.processInfo.systemUptime),
                            origin: source == .keyboard ? keyboardOrigin : .remote))
     }
@@ -99,7 +99,7 @@ final class VoiceCoordinator {
         apply(relay.handle(session.cancel(), origin: .remote))
         passedThroughWhileUnavailable = true
         needsRecovery = true
-        report("唤醒键监听中断，请检查输入软件已停止后再恢复。")
+        report("唤醒键中断，请检查输入软件状态")
     }
     func audioStarted() {
         guard case .starting(let id) = session.phase, activeID == id else { return }
@@ -107,16 +107,16 @@ final class VoiceCoordinator {
         _ = session.didStart(id)
         if !keyboardHeld { apply(relay.audioReady(id)) }
         guard session.phase == .recording(id), !needsRecovery else { return }
-        report(keyboardHeld ? "遥控器已准备好，等待释放唤醒键。" : "遥控器收音中；识别状态以输入软件为准。")
+        report(keyboardHeld ? "等待释放唤醒键" : "收音中")
     }
     func cancel() { apply(relay.handle(session.cancel(), origin: .remote)) }
     func cancelWithoutSubmitting() {
-        guard let id = activeID else { report("当前没有正在收音的会话。"); return }
+        guard let id = activeID else { report("未在收音"); return }
         relay.cancelled(id)
         apply(relay.handle(session.cancel(), origin: .remote))
         passedThroughWhileUnavailable = false
         needsRecovery = false
-        report("已停止收音，请在输入软件中手动取消转录，并确认其已停止。")
+        report("已取消收音")
     }
     func audioFailed(_ message: String) {
         if let id = activeID { apply(relay.failed(id)) }
@@ -138,7 +138,7 @@ final class VoiceCoordinator {
                     report("正在启动收音…")
                     let timeout = DispatchWorkItem { [weak self] in
                         guard let self, self.phase == .starting(id) else { return }
-                        self.audioFailed("遥控器收音启动超时。")
+                        self.audioFailed("收音启动超时")
                     }
                     timeoutWork = timeout
                     DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: timeout)
@@ -174,7 +174,7 @@ final class VoiceCoordinator {
                 }
             case .synchronizationUncertain:
                 needsRecovery = true
-                report("无法确认输入软件状态，请手动检查；重新连接后再试。")
+                report("输入软件状态未知，重连后再试")
             }
         }
     }

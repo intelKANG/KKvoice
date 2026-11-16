@@ -38,7 +38,7 @@ final class RemoteBridge {
         guard process == nil else { return }
         guard FileManager.default.isExecutableFile(atPath: helperURL.path) else {
             throw NSError(domain: "KKvoice.RemoteBridge", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "找不到遥控器助手，请重新构建应用。"])
+                          userInfo: [NSLocalizedDescriptionKey: "找不到后台助手，请重新构建"])
         }
         let child = Process()
         let stdinPipe = Pipe()
@@ -54,7 +54,7 @@ final class RemoteBridge {
                 self.process = nil
                 self.input = nil
                 self.output = nil
-                self.onStatus?("遥控器助手已停止")
+                self.onStatus?("未连接")
                 self.onMessage?(["type": "helper_process_exited"])
             }
         }
@@ -76,7 +76,7 @@ final class RemoteBridge {
         process = child
         input = stdinPipe
         output = stdoutPipe
-        onStatus?("正在连接遥控器…")
+        onStatus?("正在连接…")
         // Stage 1 enables device discovery only. It does not seize a keyboard
         // trigger or configure key actions until the user explicitly opts in.
         try send(["type": "configure", "config": [
@@ -89,7 +89,7 @@ final class RemoteBridge {
     func send(_ message: [String: Any]) throws {
         guard let input, process?.isRunning == true else {
             throw NSError(domain: "KKvoice.RemoteBridge", code: 2,
-                          userInfo: [NSLocalizedDescriptionKey: "遥控器助手未运行。"])
+                          userInfo: [NSLocalizedDescriptionKey: "后台助手未运行"])
         }
         var line = try JSONSerialization.data(withJSONObject: message, options: [.sortedKeys])
         line.append(0x0a)
@@ -100,7 +100,7 @@ final class RemoteBridge {
         guard let child = process else { return }
         try? send(["type": "shutdown"])
         try? input?.fileHandleForWriting.close()
-        onStatus?("正在断开遥控器…")
+        onStatus?("正在断开…")
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self, weak child] in
             guard let self, let child, self.process === child, child.isRunning else { return }
             child.terminate()

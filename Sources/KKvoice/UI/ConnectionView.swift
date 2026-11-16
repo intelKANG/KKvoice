@@ -35,48 +35,17 @@ struct ConnectionView: View {
     }
 
     var body: some View {
-        PageScaffold(
-            title: "连接与语音",
-            subtitle: "连接 Chromecast / Google TV 语音遥控器，使用所选输入软件的语音快捷键"
-        ) {
-            StatusPill(
-                title: model.connectionPhase.badgeTitle,
-                tone: model.connectionPhase.tone
-            )
-        } content: {
-            VStack(alignment: .leading, spacing: DS.s16) {
-                HStack(alignment: .top, spacing: DS.s20) {
-                    deviceHeroCard
-                        .frame(width: 264)
+        PageScaffold(title: "连接") {
+            HStack(alignment: .top, spacing: DS.s20) {
+                deviceHeroCard
+                    .frame(width: 264)
 
-                    VStack(alignment: .leading, spacing: DS.s16) {
-                        statusCard
-                        voiceSettingsCard
-                    }
-                    .frame(maxWidth: .infinity)
+                VStack(alignment: .leading, spacing: DS.s16) {
+                    statusCard
+                    voiceSettingsCard
                 }
-
-                footerNote
+                .frame(maxWidth: .infinity)
             }
-        }
-    }
-
-    private var phaseSymbol: String {
-        switch model.connectionPhase {
-        case .disconnected:
-            return "bolt.slash"
-        case .connecting:
-            return "dot.radiowaves.left.and.right"
-        case .keysConnected:
-            return "dpad.fill"
-        case .voiceReady:
-            return "checkmark.circle.fill"
-        case .recording:
-            return "waveform"
-        case .permissionRequired:
-            return "exclamationmark.shield.fill"
-        case .error:
-            return "exclamationmark.triangle.fill"
         }
     }
 
@@ -85,11 +54,10 @@ struct ConnectionView: View {
             VStack(alignment: .center, spacing: DS.s16) {
                 HStack(spacing: DS.s8) {
                     GoogleAssistantDotsView(size: 14)
-                    Text("Chromecast 语音遥控器")
+                    Text("遥控器")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                     Spacer()
-                    StatusDot(tone: model.connectionPhase.tone, size: 8)
                 }
 
                 ZStack {
@@ -142,10 +110,10 @@ struct ConnectionView: View {
                             .foregroundStyle(.primary)
                     }
                     if model.isRecording && model.recordingFrames > 0 {
-                        Text("已接收 \(model.recordingFrames) 帧音频（16 kHz PCM）")
+                        Text("已接收 \(model.recordingFrames) 帧")
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.blue)
-                    } else {
+                    } else if !deviceSubtitleText.isEmpty {
                         Text(deviceSubtitleText)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -159,19 +127,19 @@ struct ConnectionView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     channelStepRow(
                         icon: "dot.radiowaves.left.and.right",
-                        title: "蓝牙链路",
+                        title: "蓝牙",
                         stateText: bluetoothStepText,
                         tone: bluetoothStepTone
                     )
                     channelStepRow(
                         icon: "dpad.fill",
-                        title: "按键通道",
+                        title: "按键",
                         stateText: hidStepText,
                         tone: hidStepTone
                     )
                     channelStepRow(
                         icon: "waveform.badge.mic",
-                        title: "语音通道",
+                        title: "语音",
                         stateText: voiceStepText,
                         tone: voiceStepTone
                     )
@@ -184,28 +152,28 @@ struct ConnectionView: View {
                     } label: {
                         HStack(spacing: DS.s8) {
                             Image(systemName: "link")
-                            Text("连接遥控器")
+                            Text("连接")
                                 .fontWeight(.semibold)
                         }
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .help("启动助手并连接 Chromecast 遥控器")
+                    .help("连接遥控器")
                 } else {
                     Button {
                         model.disconnect()
                     } label: {
                         HStack(spacing: DS.s8) {
                             Image(systemName: "xmark.circle")
-                            Text("断开连接")
+                            Text("断开")
                                 .fontWeight(.medium)
                         }
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
-                    .help("断开遥控器并停止后台助手")
+                    .help("断开遥控器")
                 }
             }
         }
@@ -214,17 +182,17 @@ struct ConnectionView: View {
     private var deviceSubtitleText: String {
         switch model.connectionPhase {
         case .disconnected:
-            return "点击下方按钮启动遥控器连接"
+            return ""
         case .connecting:
-            return "请按遥控器任意键唤醒蓝牙连接"
+            return "按任意键唤醒"
         case .keysConnected:
-            return "按键已响应，正在同步语音通道"
+            return "正在连接语音"
         case .voiceReady:
-            return "按遥控器语音键或电脑唤醒键开始说话"
+            return "按语音键或唤醒键说话"
         case .recording:
-            return "正在将遥控器麦克风音频写入虚拟设备"
+            return "按语音键或唤醒键结束"
         case .permissionRequired:
-            return "授权后重新连接即可启用完整功能"
+            return "授权后重新连接"
         case .error(let msg):
             return msg
         }
@@ -251,7 +219,7 @@ struct ConnectionView: View {
             return "已连接"
         }
         if model.isSessionActive {
-            return "正在搜索"
+            return "搜索中"
         }
         return "未连接"
     }
@@ -282,7 +250,7 @@ struct ConnectionView: View {
             return "已就绪"
         }
         if model.isSessionActive {
-            return "等待唤醒"
+            return "待唤醒"
         }
         return "未连接"
     }
@@ -308,7 +276,7 @@ struct ConnectionView: View {
             return "已就绪"
         }
         if model.isSessionActive {
-            return "等待连接"
+            return "待连接"
         }
         return "未连接"
     }
@@ -344,7 +312,7 @@ struct ConnectionView: View {
     private var statusCard: some View {
         Card(padding: DS.s16) {
             VStack(alignment: .leading, spacing: DS.s12) {
-                SectionHeader("当前状态", systemImage: "waveform.path.ecg")
+                SectionHeader("状态", systemImage: "waveform.path.ecg")
 
                 if let permission = model.activePermissionIssue {
                     permissionBanner(for: permission)
@@ -352,13 +320,13 @@ struct ConnectionView: View {
 
                 HStack(alignment: .top, spacing: DS.s12) {
                     statusTile(
-                        title: "连接与收音状态",
+                        title: "遥控器",
                         value: model.statusText,
                         icon: "dot.radiowaves.up.forward",
                         tone: model.connectionPhase.tone
                     )
                     statusTile(
-                        title: "键盘唤醒监听",
+                        title: "唤醒键",
                         value: model.keyboardStatusText,
                         icon: "keyboard",
                         tone: keyboardTone
@@ -435,7 +403,7 @@ struct ConnectionView: View {
 
             Spacer(minLength: DS.s8)
 
-            Button("打开系统设置") {
+            Button("打开设置") {
                 model.openPermissionSettings(for: permission)
             }
             .buttonStyle(.borderedProminent)
@@ -456,11 +424,7 @@ struct ConnectionView: View {
     private var voiceSettingsCard: some View {
         Card(padding: DS.s16) {
             VStack(alignment: .leading, spacing: DS.s12) {
-                SectionHeader(
-                    "语音设置",
-                    subtitle: "配置虚拟音频输出设备与语音输入触发方式",
-                    systemImage: "slider.horizontal.3"
-                ) {
+                SectionHeader("语音设置", systemImage: "slider.horizontal.3") {
                     if model.isControlsLocked {
                         HStack(spacing: 4) {
                             Image(systemName: "lock.fill")
@@ -480,11 +444,7 @@ struct ConnectionView: View {
 
                 CardDivider()
 
-                LabeledRow(
-                    "虚拟麦克风",
-                    subtitle: "将遥控器语音写入该虚拟设备",
-                    systemImage: "mic.and.signal.meter"
-                ) {
+                LabeledRow("虚拟麦克风", systemImage: "mic.and.signal.meter") {
                     HStack(spacing: DS.s8) {
                         if model.availableDevices.isEmpty {
                             Picker("", selection: .constant(0)) {
@@ -510,7 +470,7 @@ struct ConnectionView: View {
                             Image(systemName: "arrow.clockwise")
                         }
                         .disabled(model.isControlsLocked)
-                        .help("刷新虚拟音频设备")
+                        .help("刷新设备")
                         .accessibilityLabel("刷新设备")
                     }
                 }
@@ -519,7 +479,7 @@ struct ConnectionView: View {
                     HStack(alignment: .top, spacing: DS.s8) {
                         Image(systemName: "info.circle.fill")
                             .foregroundStyle(.orange)
-                        Text("未检测到虚拟麦克风设备。请先运行 Scripts/install-audio-driver.sh 安装 KKvoice Mic，或安装 BlackHole 2ch 后点击刷新。")
+                        Text("未检测到虚拟麦克风，安装驱动后刷新")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -535,8 +495,8 @@ struct ConnectionView: View {
                 CardDivider()
 
                 LabeledRow(
-                    "电脑唤醒键",
-                    subtitle: "Mac 键盘触发收音的全局快捷键",
+                    "唤醒键",
+                    subtitle: "Mac 键盘触发收音",
                     systemImage: "command.square"
                 ) {
                     HStack(spacing: DS.s8) {
@@ -555,7 +515,7 @@ struct ConnectionView: View {
                             }
                             .controlSize(.small)
                             .disabled(model.isControlsLocked)
-                            .help("重新录制自定义电脑唤醒键")
+                            .help("录制唤醒键")
                         }
                     }
                 }
@@ -563,8 +523,8 @@ struct ConnectionView: View {
                 CardDivider()
 
                 LabeledRow(
-                    "输入软件快捷键",
-                    subtitle: "收音就绪后发送给语音输入软件",
+                    "输入快捷键",
+                    subtitle: "发给语音输入软件",
                     systemImage: "bolt.horizontal.circle"
                 ) {
                     HStack(spacing: DS.s8) {
@@ -583,18 +543,14 @@ struct ConnectionView: View {
                             }
                             .controlSize(.small)
                             .disabled(model.isControlsLocked)
-                            .help("重新录制自定义输入软件快捷键")
+                            .help("录制输入快捷键")
                         }
                     }
                 }
 
                 CardDivider()
 
-                LabeledRow(
-                    "遥控器语音键",
-                    subtitle: "按下遥控器语音键时的收音模式",
-                    systemImage: "mic.circle"
-                ) {
+                LabeledRow("语音键", systemImage: "mic.circle") {
                     Picker("", selection: voiceModeBinding) {
                         ForEach(Array(AppModel.voiceModeTitles.enumerated()), id: \.offset) { idx, title in
                             Text(title).tag(idx)
@@ -606,18 +562,6 @@ struct ConnectionView: View {
                 }
             }
         }
-    }
-
-    private var footerNote: some View {
-        HStack(spacing: DS.s8) {
-            Image(systemName: "sparkles")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Text("测试版：请在输入软件中选择相同的虚拟麦克风和快捷键。录音按一次开始、再按一次结束。")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, DS.s4)
     }
 }
 

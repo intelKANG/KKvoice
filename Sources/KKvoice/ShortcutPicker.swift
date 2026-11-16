@@ -4,7 +4,7 @@ import VoiceSessions
 /// Capture in the foreground, with manual selection as a fallback.
 enum ShortcutPicker {
     static func prompt(previous: ShortcutDefinition?, globalWake: Bool) -> ShortcutDefinition? {
-        let alert = NSAlert(); alert.messageText = "设置自定义快捷键"
+        let alert = NSAlert(); alert.messageText = "录制快捷键"
         alert.addButton(withTitle: "确定"); alert.addButton(withTitle: "取消")
         let key = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 280, height: 26))
         key.addItems(withTitles: ShortcutDefinition.supportedKeyNames)
@@ -16,7 +16,7 @@ enum ShortcutPicker {
             box.state = previous?.modifiers.contains(name) == true ? .on : .off
             return box
         }
-        let hint = NSTextField(labelWithString: "按下快捷键录入，Esc 取消；也可手动选择。")
+        let hint = NSTextField(labelWithString: "按下快捷键，或手动选择")
         let stack = NSStackView(views: [hint, key] + boxes); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 7
         stack.frame = NSRect(x: 0, y: 0, width: 330, height: 215); alert.accessoryView = stack
         var ordinaryKeyCaptured = false
@@ -52,7 +52,7 @@ enum ShortcutPicker {
             showError("单独修饰键不能再添加其他修饰键。"); return nil
         }
         if globalWake && !value.supportedByLegacyKeyboardTrigger {
-            showError("电脑唤醒键支持 F1–F12、空格、Enter、Escape、Tab 或单独修饰键；字母和数字需搭配修饰键。")
+            showError("唤醒键处理字母/数字时需搭配修饰键")
             return nil
         }
         return value
