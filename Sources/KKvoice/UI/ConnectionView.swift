@@ -336,18 +336,19 @@ struct ConnectionView: View {
     }
 
     private var pairingGuideBar: some View {
-        HStack(alignment: .center, spacing: DS.s8) {
+        HStack(alignment: .center, spacing: 6) {
             Image(systemName: "dot.radiowaves.left.and.right")
-                .font(.caption)
+                .font(.caption2)
                 .foregroundStyle(.secondary)
 
             Text("首次配对：同时长按「← + 🏠」3 秒至指示灯闪烁，在系统蓝牙中连接 Chromecast Remote")
-                .font(.footnote)
+                .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.88)
+                .minimumScaleFactor(0.75)
+                .layoutPriority(1)
 
-            Spacer(minLength: DS.s8)
+            Spacer(minLength: 4)
 
             Button("蓝牙设置") {
                 model.openBluetoothSettings()
@@ -493,7 +494,7 @@ struct ConnectionView: View {
                         HStack(spacing: 4) {
                             Image(systemName: "lock.fill")
                                 .font(.caption2)
-                            Text("断开后可修改")
+                            Text("收音中不可修改")
                                 .font(.caption.weight(.medium))
                         }
                         .foregroundStyle(.orange)

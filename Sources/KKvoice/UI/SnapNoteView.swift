@@ -27,7 +27,7 @@ struct SnapNoteView: View {
         PageScaffold(title: "闪念笔记") {
             if model.isControlsLocked {
                 StatusPill(
-                    title: "断开后可修改",
+                    title: "收音中不可修改",
                     tone: .warning,
                     systemImage: "lock.fill"
                 )
