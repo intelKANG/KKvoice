@@ -242,7 +242,7 @@ struct GeneralView: View {
 
                 LabeledRow(
                     "麦克风",
-                    subtitle: "遥控器未就绪时使用 Mac 麦克风",
+                    subtitle: "遥控器未就绪时使用其他收音设备",
                     systemImage: "mic.circle"
                 ) {
                     Button("打开设置") {

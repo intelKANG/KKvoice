@@ -135,7 +135,7 @@ enum ConnectionPhase: Equatable {
         case .connecting:
             return "等待连接"
         case .standby:
-            return "Mac 麦克风就绪"
+            return "其他收音设备就绪"
         case .keysConnected:
             return "正在连接语音"
         case .voiceReady:
@@ -1165,7 +1165,7 @@ final class AppModel: ObservableObject {
         case "remote_standby":
             if !(voiceChannelReady && hidConnected) {
                 isRemoteInStandby = true
-                statusText = hasEverConnectedRemote ? "遥控器离线（使用 Mac 麦克风）" : "未发现遥控器"
+                statusText = hasEverConnectedRemote ? "遥控器离线（使用其他收音设备）" : "未发现遥控器"
                 connectionPhase = .standby
             }
         case "ble_disconnected", "bluetooth_off":

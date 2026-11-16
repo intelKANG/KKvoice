@@ -8,6 +8,7 @@ struct AboutView: View {
         PageScaffold(title: "关于") {
             VStack(alignment: .leading, spacing: DS.s16) {
                 brandHeroCard
+                projectSupportCard
                 acknowledgementsCard
             }
         }
@@ -70,6 +71,45 @@ struct AboutView: View {
                             .font(.caption2)
                             .foregroundStyle(model.updater.hasUpdateAvailable ? Color.accentColor : .secondary)
                     }
+                }
+            }
+        }
+    }
+
+    private var projectSupportCard: some View {
+        Card(padding: DS.s20) {
+            VStack(alignment: .leading, spacing: DS.s16) {
+                SectionHeader("项目与反馈", systemImage: "bubble.left.and.exclamationmark.bubble.right")
+
+                CardDivider()
+
+                LabeledRow(
+                    "KKvoice 开源仓库",
+                    subtitle: "查看项目源码、版本说明与使用指南",
+                    systemImage: "chevron.left.forwardslash.chevron.right"
+                ) {
+                    Button {
+                        model.openExternalURL("https://github.com/intelKANG/KKvoice")
+                    } label: {
+                        Label("GitHub 主页", systemImage: "arrow.up.right.square")
+                    }
+                    .help("打开 KKvoice GitHub 主页")
+                }
+
+                CardDivider()
+
+                LabeledRow(
+                    "问题与建议反馈",
+                    subtitle: "遇到 Bug 或有功能建议？欢迎提交 Issue",
+                    systemImage: "exclamationmark.bubble"
+                ) {
+                    Button {
+                        model.openExternalURL("https://github.com/intelKANG/KKvoice/issues")
+                    } label: {
+                        Label("反馈问题 / 建议", systemImage: "arrow.up.right.square")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .help("在 GitHub Issues 提交问题或建议")
                 }
             }
         }

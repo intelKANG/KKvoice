@@ -212,7 +212,7 @@ struct ConnectionView: View {
         case .connecting:
             return "配对或按键唤醒后将自动连接"
         case .standby:
-            return "当前使用 Mac 麦克风 · 按遥控器任意键自动重连"
+            return "当前使用其他收音设备 · 按遥控器任意键自动重连"
         case .keysConnected:
             return "正在连接语音"
         case .voiceReady:
@@ -325,7 +325,7 @@ struct ConnectionView: View {
             return "已就绪"
         }
         if model.connectionPhase == .standby {
-            return "Mac 麦克风"
+            return "其他收音设备"
         }
         if model.isSessionActive {
             return "待连接"
@@ -385,7 +385,7 @@ struct ConnectionView: View {
                     )
                     statusTile(
                         title: "音源",
-                        value: model.activeOrStandbySource.shortTitle,
+                        value: model.activeOrStandbySource.isRemote ? "遥控器" : "其他收音设备",
                         icon: model.activeOrStandbySource.isRemote ? "appletvremote.gen4" : "mic.fill",
                         tone: audioSourceTone
                     )
@@ -665,9 +665,9 @@ struct ConnectionView: View {
                 CardDivider()
 
                 LabeledRow(
-                    "Mac 麦克风",
+                    "其他收音设备",
                     subtitle: "遥控器未就绪时自动使用",
-                    systemImage: "laptopcomputer"
+                    systemImage: "mic.badge.plus"
                 ) {
                     Menu {
                         Button {
