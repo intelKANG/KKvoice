@@ -31,6 +31,13 @@ struct ConnectionView: View {
         }
     }
 
+    private var heroStageTone: StatusTone {
+        if model.connectionPhase == .standby {
+            return .disconnected
+        }
+        return model.connectionPhase.tone
+    }
+
     private var deviceHeroCard: some View {
         Card(padding: DS.s20) {
             VStack(alignment: .center, spacing: DS.s16) {
@@ -47,7 +54,7 @@ struct ConnectionView: View {
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    model.connectionPhase.tone.color.opacity(0.11),
+                                    heroStageTone.color.opacity(0.11),
                                     DS.subtleFill
                                 ],
                                 startPoint: .top,
@@ -56,7 +63,7 @@ struct ConnectionView: View {
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .strokeBorder(model.connectionPhase.tone.color.opacity(0.20), lineWidth: 1)
+                                .strokeBorder(heroStageTone.color.opacity(0.20), lineWidth: 1)
                         )
 
                     if model.isRecording {
@@ -77,7 +84,7 @@ struct ConnectionView: View {
                     )
                     .padding(.vertical, 8)
                 }
-                .frame(height: 220)
+                .frame(height: 212)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .onAppear { pulseRing = model.isRecording }
                 .onChange(of: model.isRecording) { active in
@@ -86,7 +93,7 @@ struct ConnectionView: View {
 
                 VStack(spacing: 4) {
                     HStack(spacing: DS.s8) {
-                        StatusDot(tone: model.connectionPhase.tone, size: 9)
+                        StatusDot(tone: heroStageTone, size: 9)
                         Text(model.connectionPhase.headlineTitle)
                             .font(.title3.bold())
                             .foregroundStyle(.primary)
@@ -149,6 +156,36 @@ struct ConnectionView: View {
                             .font(.caption2)
                             .foregroundStyle(.orange)
                     }
+                } else if model.connectionPhase == .standby {
+                    HStack(spacing: DS.s8) {
+                        Button {
+                            model.scanRemote(duration: 30)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "dot.radiowaves.left.and.right")
+                                Text("搜索遥控器")
+                                    .fontWeight(.semibold)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .help("开启 30 秒蓝牙扫描窗口")
+
+                        if model.hasEverConnectedRemote {
+                            Button {
+                                withAnimation(DS.stateAnimation) {
+                                    model.showManualPairingGuide.toggle()
+                                }
+                            } label: {
+                                Text("配对说明")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                            .fixedSize()
+                            .help("显示首次蓝牙配对说明")
+                        }
+                    }
                 } else {
                     Button {
                         model.disconnect()
@@ -174,6 +211,8 @@ struct ConnectionView: View {
             return ""
         case .connecting:
             return "配对或按键唤醒后将自动连接"
+        case .standby:
+            return "当前使用 Mac 麦克风 · 按遥控器任意键自动重连"
         case .keysConnected:
             return "正在连接语音"
         case .voiceReady:
@@ -194,6 +233,9 @@ struct ConnectionView: View {
         if model.voiceChannelReady || model.hidConnected {
             return .connected
         }
+        if model.connectionPhase == .standby {
+            return .disconnected
+        }
         if model.isSessionActive {
             return .connecting
         }
@@ -207,6 +249,9 @@ struct ConnectionView: View {
         if model.voiceChannelReady || model.hidConnected {
             return "已连接"
         }
+        if model.connectionPhase == .standby {
+            return "待机"
+        }
         if model.isSessionActive {
             return "搜索中"
         }
@@ -219,6 +264,9 @@ struct ConnectionView: View {
         }
         if model.hidConnected {
             return .connected
+        }
+        if model.connectionPhase == .standby {
+            return .disconnected
         }
         if model.isSessionActive {
             return .connecting
@@ -238,6 +286,9 @@ struct ConnectionView: View {
         if model.hidConnected {
             return "已就绪"
         }
+        if model.connectionPhase == .standby {
+            return "待唤醒"
+        }
         if model.isSessionActive {
             return "待唤醒"
         }
@@ -249,6 +300,9 @@ struct ConnectionView: View {
             return .recording
         }
         if model.voiceChannelReady {
+            return .connected
+        }
+        if model.connectionPhase == .standby {
             return .connected
         }
         if model.isSessionActive {
@@ -263,6 +317,9 @@ struct ConnectionView: View {
         }
         if model.voiceChannelReady {
             return "已就绪"
+        }
+        if model.connectionPhase == .standby {
+            return "Mac 麦克风"
         }
         if model.isSessionActive {
             return "待连接"
@@ -345,8 +402,7 @@ struct ConnectionView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .layoutPriority(1)
+                .minimumScaleFactor(0.72)
 
             Spacer(minLength: 4)
 
@@ -354,6 +410,7 @@ struct ConnectionView: View {
                 model.openBluetoothSettings()
             }
             .controlSize(.small)
+            .fixedSize()
             .help("打开系统蓝牙设置")
         }
         .padding(.horizontal, 10)

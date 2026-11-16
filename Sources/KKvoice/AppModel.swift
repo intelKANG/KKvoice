@@ -83,6 +83,7 @@ typealias SidebarPage = SidebarTab
 enum ConnectionPhase: Equatable {
     case disconnected
     case connecting
+    case standby
     case keysConnected
     case voiceReady
     case recording
@@ -95,7 +96,7 @@ enum ConnectionPhase: Equatable {
             return .disconnected
         case .connecting:
             return .connecting
-        case .keysConnected, .voiceReady:
+        case .standby, .keysConnected, .voiceReady:
             return .connected
         case .recording:
             return .recording
@@ -112,6 +113,8 @@ enum ConnectionPhase: Equatable {
             return "未连接"
         case .connecting:
             return "搜索中"
+        case .standby:
+            return "Mac 麦克风就绪"
         case .keysConnected:
             return "按键已连"
         case .voiceReady:
@@ -130,7 +133,9 @@ enum ConnectionPhase: Equatable {
         case .disconnected:
             return "未连接"
         case .connecting:
-            return "正在自动搜索遥控器…"
+            return "正在搜索遥控器…"
+        case .standby:
+            return "遥控器离线"
         case .keysConnected:
             return "按键已就绪"
         case .voiceReady:
@@ -156,6 +161,9 @@ final class AppModel: ObservableObject {
     @Published var isSessionActive: Bool = false
     @Published var hidConnected: Bool = false
     @Published var voiceChannelReady: Bool = false
+    @Published var isRemoteInStandby: Bool = false
+    @Published var hasEverConnectedRemote: Bool = false
+    @Published var showManualPairingGuide: Bool = false
     @Published var isRecording: Bool = false
     @Published var recordingFrames: Int = 0
     @Published var requiredPermission: String? = nil
@@ -214,6 +222,7 @@ final class AppModel: ObservableObject {
     let snapShortcutKey = "snapNoteNewShortcut"
     let snapTagKey = "snapNoteTagName"
     let showMenuBarIconKey = "showMenuBarIcon"
+    let hasEverConnectedRemoteKey = "hasEverConnectedRemote"
     private let mappingStore = ButtonMappingStore()
     private lazy var buttonDispatcher = ButtonActionDispatcher(
         mappings: mappings,
@@ -289,15 +298,10 @@ final class AppModel: ObservableObject {
         voiceChannelReady || hidConnected
     }
     var shouldShowPairingGuide: Bool {
-        if !isRemoteConnected {
+        if showManualPairingGuide {
             return true
         }
-        switch connectionPhase {
-        case .disconnected, .connecting:
-            return true
-        default:
-            return false
-        }
+        return !hasEverConnectedRemote && !isRemoteConnected
     }
 
     var wakeKeyTitles: [String] {
@@ -340,6 +344,7 @@ final class AppModel: ObservableObject {
         } else {
             self.showMenuBarIcon = UserDefaults.standard.bool(forKey: showMenuBarIconKey)
         }
+        self.hasEverConnectedRemote = UserDefaults.standard.bool(forKey: hasEverConnectedRemoteKey)
 
         let serviceStatus = SMAppService.mainApp.status
         self.launchAtLogin = (serviceStatus == .enabled)
@@ -760,6 +765,7 @@ final class AppModel: ObservableObject {
         let helper = resourceURL.appendingPathComponent("KKvoiceRemoteHelper.app/Contents/MacOS/KKvoiceRemoteHelper")
         do {
             requiredPermission = nil
+            isRemoteInStandby = false
             keyboardStatus.connecting(key: selectedWake)
             keyboardState = keyboardStatus.state
             keyboardStatusText = keyboardStatus.text
@@ -782,10 +788,35 @@ final class AppModel: ObservableObject {
             keyboardState = keyboardStatus.state
             keyboardStatusText = keyboardStatus.text
             isSessionActive = false
+            isRemoteInStandby = false
             connectionPhase = .error(error.localizedDescription)
             bridge.stop()
             statusText = error.localizedDescription
         }
+    }
+
+    func markRemoteEverConnected() {
+        if !hasEverConnectedRemote {
+            hasEverConnectedRemote = true
+        }
+        UserDefaults.standard.set(true, forKey: hasEverConnectedRemoteKey)
+        showManualPairingGuide = false
+    }
+
+    func scanRemote(duration: Int = 30, showGuide: Bool = false) {
+        if showGuide {
+            showManualPairingGuide = true
+        }
+        guard isSessionActive else {
+            connect()
+            return
+        }
+        isRemoteInStandby = false
+        if !isRemoteConnected {
+            connectionPhase = .connecting
+            statusText = "正在搜索遥控器…"
+        }
+        try? bridge.send(["type": "scan_remote", "duration": duration])
     }
 
     func disconnect() {
@@ -917,17 +948,28 @@ final class AppModel: ObservableObject {
         case "device_ready":
             voice.setReady(true)
             voiceChannelReady = true
+            isRemoteInStandby = false
             requiredPermission = nil
+            markRemoteEverConnected()
             statusText = "已连接"
             syncVoicePhase()
         case "hid_connected":
             hidConnected = true
+            isRemoteInStandby = false
+            markRemoteEverConnected()
             statusText = "按键已连接"
             syncVoicePhase()
         case "scanning":
-            statusText = "正在自动搜索遥控器…"
+            isRemoteInStandby = false
+            statusText = "正在搜索遥控器…"
             if !voiceChannelReady && !hidConnected {
                 connectionPhase = .connecting
+            }
+        case "remote_standby":
+            if !voiceChannelReady && !hidConnected {
+                isRemoteInStandby = true
+                statusText = hasEverConnectedRemote ? "遥控器离线（使用 Mac 麦克风）" : "未发现遥控器"
+                connectionPhase = .standby
             }
         case "ble_disconnected", "bluetooth_off":
             voice.setReady(false)
@@ -1048,6 +1090,7 @@ final class AppModel: ObservableObject {
             isSessionActive = false
             hidConnected = false
             voiceChannelReady = false
+            isRemoteInStandby = false
             isRecording = false
             recordingFrames = 0
             lastPressedButtonID = nil
@@ -1078,6 +1121,8 @@ final class AppModel: ObservableObject {
                 connectionPhase = .voiceReady
             } else if hidConnected {
                 connectionPhase = .keysConnected
+            } else if isRemoteInStandby {
+                connectionPhase = .standby
             } else if isSessionActive {
                 connectionPhase = .connecting
             } else {
