@@ -10,6 +10,8 @@ import SwiftUI
 struct RemoteIllustration: View {
     var highlighted: String? = nil
     var compact: Bool = false
+    var width: CGFloat? = nil
+    var height: CGFloat? = nil
     var onTap: ((String) -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
@@ -70,8 +72,8 @@ struct RemoteIllustration: View {
         }
         .aspectRatio(Self.canvasWidth / Self.canvasHeight, contentMode: .fit)
         .frame(
-            width: compact ? 68 : 148,
-            height: compact ? 176 : 384
+            width: width ?? (compact ? 68 : 148),
+            height: height ?? (compact ? 176 : 384)
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("遥控器")
