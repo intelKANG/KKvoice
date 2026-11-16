@@ -783,6 +783,9 @@ final class AppModel: ObservableObject {
                 }
             }
             isSessionActive = true
+            if !hasEverConnectedRemote {
+                try? bridge.send(["type": "scan_remote", "duration": 60])
+            }
         } catch {
             keyboardStatus.receive(["type": "helper_process_exited"])
             keyboardState = keyboardStatus.state
@@ -803,7 +806,7 @@ final class AppModel: ObservableObject {
         showManualPairingGuide = false
     }
 
-    func scanRemote(duration: Int = 30, showGuide: Bool = false) {
+    func scanRemote(duration: Int = 60, showGuide: Bool = false) {
         if showGuide {
             showManualPairingGuide = true
         }

@@ -159,7 +159,7 @@ struct ConnectionView: View {
                 } else if model.connectionPhase == .standby {
                     HStack(spacing: DS.s8) {
                         Button {
-                            model.scanRemote(duration: 30)
+                            model.scanRemote(duration: 60)
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "dot.radiowaves.left.and.right")
@@ -170,7 +170,7 @@ struct ConnectionView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
-                        .help("开启 30 秒蓝牙扫描窗口")
+                        .help("开启 60 秒蓝牙扫描窗口")
 
                         if model.hasEverConnectedRemote {
                             Button {
