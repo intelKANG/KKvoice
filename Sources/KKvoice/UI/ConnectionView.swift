@@ -142,9 +142,9 @@ struct ConnectionView: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .disabled(!model.canConnect)
-                    .help(model.availableDevices.isEmpty ? "请先安装 KKvoice Mic" : "连接遥控器")
+                    .help(!model.isKKvoiceMicAvailable ? "请先安装 KKvoice Mic" : "连接遥控器")
 
-                    if model.availableDevices.isEmpty {
+                    if !model.isKKvoiceMicAvailable {
                         Text("需先安装 KKvoice Mic 才可连接")
                             .font(.caption2)
                             .foregroundStyle(.orange)
@@ -510,7 +510,7 @@ struct ConnectionView: View {
                     .frame(width: Self.controlColumnWidth, alignment: .trailing)
                 }
 
-                if model.availableDevices.isEmpty {
+                if !model.isKKvoiceMicAvailable {
                     HStack(alignment: .center, spacing: DS.s12) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)

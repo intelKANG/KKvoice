@@ -275,7 +275,7 @@ final class AppModel: ObservableObject {
         allowKeyboardFallbackWhenNotReady: true
     )
 
-    var canConnect: Bool { !isSessionActive && !availableDevices.isEmpty && !isDriverInstalling }
+    var canConnect: Bool { !isSessionActive && isKKvoiceMicAvailable && !isDriverInstalling }
     var canDisconnect: Bool { isSessionActive }
     var canCaptureShortcut: Bool { !isSessionActive }
     var isControlsLocked: Bool { isSessionActive }
@@ -643,7 +643,7 @@ final class AppModel: ObservableObject {
 
     func connect() {
         guard !isSessionActive else { return }
-        guard !availableDevices.isEmpty else {
+        guard isKKvoiceMicAvailable else {
             statusText = "需要安装 KKvoice Mic"
             return
         }
