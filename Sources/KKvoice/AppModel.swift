@@ -94,9 +94,9 @@ enum ConnectionPhase: Equatable {
         switch self {
         case .disconnected:
             return .disconnected
-        case .connecting:
+        case .connecting, .keysConnected:
             return .connecting
-        case .standby, .keysConnected, .voiceReady:
+        case .standby, .voiceReady:
             return .connected
         case .recording:
             return .recording
@@ -112,11 +112,11 @@ enum ConnectionPhase: Equatable {
         case .disconnected:
             return "未连接"
         case .connecting:
-            return "搜索中"
+            return "等待连接"
         case .standby:
             return "Mac 麦克风就绪"
         case .keysConnected:
-            return "按键已连"
+            return "正在连接语音"
         case .voiceReady:
             return "已连接"
         case .recording:
@@ -133,11 +133,11 @@ enum ConnectionPhase: Equatable {
         case .disconnected:
             return "未连接"
         case .connecting:
-            return "正在搜索遥控器…"
+            return "等待遥控器连接…"
         case .standby:
             return "遥控器离线"
         case .keysConnected:
-            return "按键已就绪"
+            return "正在连接语音通道…"
         case .voiceReady:
             return "已连接"
         case .recording:
@@ -295,7 +295,7 @@ final class AppModel: ObservableObject {
         availableDevices.contains(where: { $0.uid == DriverInstaller.deviceUID })
     }
     var isRemoteConnected: Bool {
-        voiceChannelReady || hidConnected
+        voiceChannelReady && hidConnected
     }
     var shouldShowPairingGuide: Bool {
         if showManualPairingGuide {
@@ -953,23 +953,35 @@ final class AppModel: ObservableObject {
             voiceChannelReady = true
             isRemoteInStandby = false
             requiredPermission = nil
-            markRemoteEverConnected()
-            statusText = "已连接"
+            if hidConnected {
+                markRemoteEverConnected()
+                statusText = "已连接"
+            } else {
+                statusText = "语音通道已就绪，等待按键通道…"
+            }
             syncVoicePhase()
         case "hid_connected":
             hidConnected = true
             isRemoteInStandby = false
             markRemoteEverConnected()
-            statusText = "按键已连接"
+            if voiceChannelReady {
+                statusText = "已连接"
+            } else {
+                statusText = "已检测到遥控器按键，正在连接语音通道…"
+            }
             syncVoicePhase()
         case "scanning":
             isRemoteInStandby = false
-            statusText = "正在搜索遥控器…"
-            if !voiceChannelReady && !hidConnected {
-                connectionPhase = .connecting
+            if !hidConnected {
+                statusText = "等待系统蓝牙连接遥控器…"
+            } else if !voiceChannelReady {
+                statusText = "已检测到遥控器按键，正在连接语音通道…"
+            }
+            if !(voiceChannelReady && hidConnected) {
+                connectionPhase = hidConnected ? .keysConnected : .connecting
             }
         case "remote_standby":
-            if !voiceChannelReady && !hidConnected {
+            if !(voiceChannelReady && hidConnected) {
                 isRemoteInStandby = true
                 statusText = hasEverConnectedRemote ? "遥控器离线（使用 Mac 麦克风）" : "未发现遥控器"
                 connectionPhase = .standby
@@ -977,13 +989,15 @@ final class AppModel: ObservableObject {
         case "ble_disconnected", "bluetooth_off":
             voice.setReady(false)
             voiceChannelReady = false
-            statusText = "蓝牙已断开"
+            statusText = hidConnected ? "语音通道已断开，正在重连…" : "蓝牙已断开"
             syncVoicePhase()
         case "hid_disconnected":
             buttonDispatcher.deviceDisconnected()
             hidConnected = false
+            voice.setReady(false)
+            voiceChannelReady = false
             lastPressedButtonID = nil
-            statusText = "按键已断开"
+            statusText = "遥控器已断开"
             syncVoicePhase()
         case "button_down":
             if let id = message["buttonId"] as? String {
@@ -1112,18 +1126,24 @@ final class AppModel: ObservableObject {
             connectionPhase = .recording
         case .starting, .stopping:
             isRecording = false
-            if voiceChannelReady {
+            if hidConnected && voiceChannelReady {
                 connectionPhase = .voiceReady
+            } else if hidConnected {
+                connectionPhase = .keysConnected
+            } else {
+                connectionPhase = .connecting
             }
         case .idle:
             isRecording = false
             recordingFrames = 0
             if let perm = requiredPermission {
                 connectionPhase = .permissionRequired(perm)
-            } else if voiceChannelReady {
+            } else if hidConnected && voiceChannelReady {
                 connectionPhase = .voiceReady
             } else if hidConnected {
                 connectionPhase = .keysConnected
+            } else if voiceChannelReady {
+                connectionPhase = .connecting
             } else if isRemoteInStandby {
                 connectionPhase = .standby
             } else if isSessionActive {

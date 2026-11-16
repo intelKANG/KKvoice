@@ -230,8 +230,11 @@ struct ConnectionView: View {
         if let perm = model.requiredPermission, perm == "bluetooth" {
             return .warning
         }
-        if model.voiceChannelReady || model.hidConnected {
+        if model.voiceChannelReady && model.hidConnected {
             return .connected
+        }
+        if model.voiceChannelReady || model.hidConnected {
+            return .connecting
         }
         if model.connectionPhase == .standby {
             return .disconnected
@@ -246,14 +249,17 @@ struct ConnectionView: View {
         if let perm = model.requiredPermission, perm == "bluetooth" {
             return "需蓝牙权限"
         }
-        if model.voiceChannelReady || model.hidConnected {
+        if model.voiceChannelReady && model.hidConnected {
             return "已连接"
+        }
+        if model.voiceChannelReady || model.hidConnected {
+            return "连接中"
         }
         if model.connectionPhase == .standby {
             return "待机"
         }
         if model.isSessionActive {
-            return "搜索中"
+            return "等待连接"
         }
         return "未连接"
     }
