@@ -49,6 +49,8 @@ static void Log(NSString *message) {
 @property(nonatomic, strong) CBCharacteristic *audioCharacteristic;
 @property(nonatomic, strong) CBCharacteristic *controlCharacteristic;
 @property(nonatomic, strong) NSTimer *keepAliveTimer;
+@property(nonatomic, strong) NSTimer *discoveryTimer;
+@property(nonatomic, assign) BOOL scanningEmitted;
 @property(nonatomic, strong) NSDictionary *keyboardConfig;
 @property(nonatomic, strong) NSDictionary *buttonMappings;
 @property(nonatomic, assign) IOHIDManagerRef hidManager;
@@ -121,6 +123,10 @@ static void Log(NSString *message) {
 - (BOOL)armCaptureProbe:(NSString *)origin;
 - (void)requestCapabilitiesIfReady;
 - (void)failCurrentPeripheral:(NSString *)message;
+- (void)discoverRemote;
+- (void)pollOrScanForRemote;
+- (void)startDiscoveryTimer;
+- (void)stopDiscoveryTimer;
 - (void)retryScan;
 @end
 
@@ -136,6 +142,12 @@ static void HIDInputReportCallback(
 static void HIDDeviceMatchedCallback(void *context, IOReturn result, void *sender, IOHIDDeviceRef device) {
     if (result == kIOReturnSuccess) {
         Emit(@"hid_connected", @{@"vendorId": @(kRemoteVendorID), @"productId": @(kRemoteProductID)});
+        if (context) {
+            RemoteHelper *helper = (__bridge RemoteHelper *)context;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [helper discoverRemote];
+            });
+        }
     }
 }
 
@@ -388,6 +400,9 @@ static CGEventRef KeyboardEventCallback(
 }
 
 - (void)handleReportID:(uint32_t)reportID data:(NSData *)data {
+    if (!self.peripheral && !self.stopped && self.central.state == CBManagerStatePoweredOn) {
+        [self pollOrScanForRemote];
+    }
     if (reportID != 0x01 || data.length == 0) return;
     const uint8_t *bytes = data.bytes;
     NSUInteger offset = bytes[0] == (uint8_t)reportID ? 1 : 0;
@@ -417,6 +432,8 @@ static CGEventRef KeyboardEventCallback(
             Emit(@"permission_required", @{@"permission": @"bluetooth"});
             break;
         case CBManagerStatePoweredOff:
+            [self stopDiscoveryTimer];
+            self.scanningEmitted = NO;
             [central stopScan];
             [self.keepAliveTimer invalidate];
             self.keepAliveTimer = nil;
@@ -433,21 +450,63 @@ static CGEventRef KeyboardEventCallback(
     }
 }
 
+- (void)startDiscoveryTimer {
+    if (self.stopped || self.central.state != CBManagerStatePoweredOn || self.peripheral) {
+        [self stopDiscoveryTimer];
+        return;
+    }
+    if (self.discoveryTimer) return;
+    __weak RemoteHelper *weakSelf = self;
+    self.discoveryTimer = [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *timer) {
+        RemoteHelper *helper = weakSelf;
+        if (!helper || helper.stopped || helper.central.state != CBManagerStatePoweredOn || helper.peripheral) {
+            [helper stopDiscoveryTimer];
+            return;
+        }
+        [helper pollOrScanForRemote];
+    }];
+}
+
+- (void)stopDiscoveryTimer {
+    [self.discoveryTimer invalidate];
+    self.discoveryTimer = nil;
+}
+
 - (void)discoverRemote {
+    if (self.stopped || self.central.state != CBManagerStatePoweredOn || self.peripheral) return;
+    [self startDiscoveryTimer];
+    [self pollOrScanForRemote];
+}
+
+- (void)pollOrScanForRemote {
     if (self.stopped || self.central.state != CBManagerStatePoweredOn || self.peripheral) return;
     CBUUID *service = [CBUUID UUIDWithString:ATVVServiceUUID];
     NSArray<CBPeripheral *> *connected = [self.central retrieveConnectedPeripheralsWithServices:@[service]];
+    CBPeripheral *matched = nil;
     for (CBPeripheral *candidate in connected) {
-        if ([candidate.name localizedCaseInsensitiveContainsString:@"Chromecast Remote"]) {
-            [self connectPeripheral:candidate];
-            return;
+        if ([self isChromecastRemote:candidate]) {
+            matched = candidate;
+            break;
         }
     }
-    if (connected.count > 0) {
-        Log(@"Found an ATVV device, but its name does not match Chromecast Remote.");
+    if (!matched && connected.count > 0) {
+        matched = connected.firstObject;
     }
-    [self.central scanForPeripheralsWithServices:@[service] options:@{CBCentralManagerScanOptionAllowDuplicatesKey: @NO}];
-    Emit(@"scanning", @{});
+    if (matched) {
+        [self stopDiscoveryTimer];
+        if (self.central.isScanning) [self.central stopScan];
+        self.scanningEmitted = NO;
+        [self connectPeripheral:matched];
+        return;
+    }
+    if (!self.central.isScanning) {
+        [self.central scanForPeripheralsWithServices:@[service]
+                                             options:@{CBCentralManagerScanOptionAllowDuplicatesKey: @YES}];
+    }
+    if (!self.scanningEmitted) {
+        self.scanningEmitted = YES;
+        Emit(@"scanning", @{});
+    }
 }
 
 - (BOOL)isChromecastRemote:(CBPeripheral *)peripheral {
@@ -458,9 +517,15 @@ static CGEventRef KeyboardEventCallback(
      advertisementData:(NSDictionary<NSString *,id> *)advertisementData RSSI:(NSNumber *)RSSI {
     NSString *advertisedName = [advertisementData[CBAdvertisementDataLocalNameKey] isKindOfClass:[NSString class]]
         ? advertisementData[CBAdvertisementDataLocalNameKey] : @"";
-    BOOL matchesName = [self isChromecastRemote:peripheral] ||
-        [advertisedName localizedCaseInsensitiveContainsString:@"Chromecast Remote"];
-    if (self.stopped || self.peripheral || !matchesName) return;
+    NSArray *advertisedServices = [advertisementData[CBAdvertisementDataServiceUUIDsKey] isKindOfClass:[NSArray class]]
+        ? advertisementData[CBAdvertisementDataServiceUUIDsKey] : @[];
+    CBUUID *atvvUUID = [CBUUID UUIDWithString:ATVVServiceUUID];
+    BOOL matchesServiceOrName = [self isChromecastRemote:peripheral] ||
+        [advertisedName localizedCaseInsensitiveContainsString:@"Chromecast Remote"] ||
+        [advertisedServices containsObject:atvvUUID];
+    if (self.stopped || self.peripheral || !matchesServiceOrName) return;
+    [self stopDiscoveryTimer];
+    self.scanningEmitted = NO;
     [central stopScan];
     [self connectPeripheral:peripheral];
 }
@@ -497,6 +562,8 @@ static CGEventRef KeyboardEventCallback(
 
 - (void)connectPeripheral:(CBPeripheral *)peripheral {
     if (self.peripheral == peripheral) return;
+    [self stopDiscoveryTimer];
+    self.scanningEmitted = NO;
     if (self.peripheral) [self.central cancelPeripheralConnection:self.peripheral];
     [self resetATVVState];
     self.peripheral = peripheral;
@@ -926,14 +993,11 @@ static CGEventRef KeyboardEventCallback(
 }
 
 - (void)retryScan {
-    if (self.stopped || self.central.state != CBManagerStatePoweredOn || self.scanRetryScheduled) return;
-    self.scanRetryCount = MIN(self.scanRetryCount + 1, 5);
-    NSTimeInterval delay = MIN(16.0, pow(2.0, self.scanRetryCount - 1));
-    self.scanRetryScheduled = YES;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        self.scanRetryScheduled = NO;
-        if (!self.stopped && self.central.state == CBManagerStatePoweredOn) [self discoverRemote];
-    });
+    if (self.stopped || self.central.state != CBManagerStatePoweredOn || self.peripheral) return;
+    self.scanRetryScheduled = NO;
+    self.scanRetryCount = 0;
+    self.scanningEmitted = NO;
+    [self discoverRemote];
 }
 
 - (uint16_t)keyCodeForName:(NSString *)name {
@@ -1631,6 +1695,8 @@ static CGEventRef KeyboardEventCallback(
     self.captureGate = gate;
     [self.keepAliveTimer invalidate];
     self.keepAliveTimer = nil;
+    [self stopDiscoveryTimer];
+    self.scanningEmitted = NO;
     [self closeMicrophoneForcefully];
     [self.central stopScan];
     if (self.peripheral) [self.central cancelPeripheralConnection:self.peripheral];
