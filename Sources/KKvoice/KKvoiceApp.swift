@@ -53,6 +53,7 @@ final class KKvoiceAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         window.center()
 
         window.makeKeyAndOrderFront(nil)
+        model.applyAppearance()
         NSApplication.shared.activate(ignoringOtherApps: true)
         model.connect()
     }

@@ -18,6 +18,7 @@ struct MainView: View {
         }
         .frame(minWidth: 860, idealWidth: 960, maxWidth: .infinity, minHeight: 600, idealHeight: 680, maxHeight: .infinity)
         .background(DS.windowBackground)
+        .preferredColorScheme(model.appearanceMode.colorScheme)
     }
 
     private var sidebar: some View {
@@ -132,6 +133,28 @@ struct MainView: View {
                     tone: model.connectionPhase.tone
                 )
                 Spacer(minLength: 0)
+
+                Button {
+                    withAnimation(DS.stateAnimation) {
+                        model.cycleAppearanceMode()
+                    }
+                } label: {
+                    Image(systemName: model.appearanceMode.systemImage)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 26, height: 26)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(DS.subtleFill)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .strokeBorder(DS.border, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("外观：\(model.appearanceMode.title)")
+                .accessibilityLabel("切换外观")
             }
         }
     }

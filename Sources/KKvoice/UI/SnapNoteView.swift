@@ -47,7 +47,7 @@ struct SnapNoteView: View {
                         text: $tokenInput
                     )
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 280)
+                    .frame(width: 260)
                     .disabled(model.isControlsLocked)
                 }
 
@@ -62,8 +62,10 @@ struct SnapNoteView: View {
                         Text(effectiveShortcutText)
                             .font(.callout.monospaced())
                             .foregroundStyle((draftShortcut ?? model.snapNoteShortcut) == nil ? .secondary : .primary)
+                            .lineLimit(1)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .background(
                                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                                     .fill(DS.subtleFill)
@@ -81,6 +83,7 @@ struct SnapNoteView: View {
                         .disabled(model.isControlsLocked)
                         .help("录制快捷键")
                     }
+                    .frame(width: 260, alignment: .trailing)
                 }
 
                 CardDivider()

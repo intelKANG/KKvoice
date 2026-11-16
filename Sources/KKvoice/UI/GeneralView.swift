@@ -10,6 +10,13 @@ struct GeneralView: View {
         )
     }
 
+    private var appearanceBinding: Binding<AppAppearanceMode> {
+        Binding(
+            get: { model.appearanceMode },
+            set: { model.setAppearanceMode($0) }
+        )
+    }
+
     var body: some View {
         PageScaffold(title: "通用") {
             VStack(alignment: .leading, spacing: DS.s16) {
@@ -23,6 +30,19 @@ struct GeneralView: View {
         Card(padding: DS.s20) {
             VStack(alignment: .leading, spacing: DS.s16) {
                 SectionHeader("启动与运行", systemImage: "power.circle")
+
+                CardDivider()
+
+                LabeledRow("外观", systemImage: model.appearanceMode.systemImage) {
+                    Picker("", selection: appearanceBinding) {
+                        ForEach(AppAppearanceMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 210)
+                }
 
                 CardDivider()
 

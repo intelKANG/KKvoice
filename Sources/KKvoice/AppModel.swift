@@ -5,7 +5,48 @@ import Foundation
 import RemoteAudio
 import ServiceManagement
 import SnapNote
+import SwiftUI
 import VoiceSessions
+
+enum AppAppearanceMode: String, CaseIterable, Identifiable {
+    case light
+    case dark
+    case system
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .light: return "浅色"
+        case .dark: return "深色"
+        case .system: return "跟随系统"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .light: return "sun.max.fill"
+        case .dark: return "moon.fill"
+        case .system: return "circle.lefthalf.filled"
+        }
+    }
+
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .light: return NSAppearance(named: .aqua)
+        case .dark: return NSAppearance(named: .darkAqua)
+        case .system: return nil
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .light: return .light
+        case .dark: return .dark
+        case .system: return nil
+        }
+    }
+}
 
 enum SidebarTab: String, CaseIterable, Identifiable {
     case connection
@@ -130,6 +171,7 @@ final class AppModel: ObservableObject {
 
     @Published var launchAtLogin: Bool = false
     @Published var loginItemRequiresApproval: Bool = false
+    @Published var appearanceMode: AppAppearanceMode = .system
 
     @Published var mappings: ButtonMappings
     @Published var snapNoteShortcut: String? = nil
@@ -218,6 +260,10 @@ final class AppModel: ObservableObject {
         self.inputSelectionIndex = keyboardSettings.inputSelection(choices: InputShortcut.choices)
         self.snapNoteShortcut = UserDefaults.standard.string(forKey: snapShortcutKey)
         self.hasSnapNoteToken = ((try? snapTokenStore.load()) ?? nil) != nil
+
+        let storedAppearance = UserDefaults.standard.string(forKey: "appAppearanceMode")
+            .flatMap(AppAppearanceMode.init(rawValue:)) ?? .system
+        self.appearanceMode = storedAppearance
 
         let serviceStatus = SMAppService.mainApp.status
         self.launchAtLogin = (serviceStatus == .enabled)
@@ -330,6 +376,30 @@ final class AppModel: ObservableObject {
             customInputTitle = "自定义：\(keyboardSettings.inputDefinition().encoded)"
         } else {
             customInputTitle = "自定义…"
+        }
+    }
+
+    func setAppearanceMode(_ mode: AppAppearanceMode) {
+        appearanceMode = mode
+        UserDefaults.standard.set(mode.rawValue, forKey: "appAppearanceMode")
+        applyAppearance()
+    }
+
+    func cycleAppearanceMode() {
+        let next: AppAppearanceMode
+        switch appearanceMode {
+        case .system: next = .light
+        case .light: next = .dark
+        case .dark: next = .system
+        }
+        setAppearanceMode(next)
+    }
+
+    func applyAppearance() {
+        let target = appearanceMode.nsAppearance
+        NSApplication.shared.appearance = target
+        for win in NSApplication.shared.windows {
+            win.appearance = target
         }
     }
 
@@ -818,12 +888,32 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private static var fallbackPlistDictionary: [String: Any]? = {
+        let plistURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Native/Info.plist")
+        return NSDictionary(contentsOf: plistURL) as? [String: Any]
+    }()
+
     var appVersionString: String {
-        let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.1"
-        return short
+        if let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+            return short
+        }
+        if let short = Self.fallbackPlistDictionary?["CFBundleShortVersionString"] as? String {
+            return short
+        }
+        return ""
     }
 
     var appBuildString: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        if let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
+            return build
+        }
+        if let build = Self.fallbackPlistDictionary?["CFBundleVersion"] as? String {
+            return build
+        }
+        return ""
     }
 }

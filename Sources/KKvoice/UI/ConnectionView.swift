@@ -421,6 +421,35 @@ struct ConnectionView: View {
         )
     }
 
+    private static let controlColumnWidth: CGFloat = 260
+    private static let refreshButtonWidth: CGFloat = 28
+
+    private var selectedDeviceSummary: String {
+        guard !model.availableDevices.isEmpty else {
+            return model.emptyDevicePlaceholderTitle
+        }
+        let idx = model.availableDevices.indices.contains(model.selectedDeviceIndex) ? model.selectedDeviceIndex : 0
+        return model.deviceDisplayTitle(model.availableDevices[idx])
+    }
+
+    private var selectedWakeSummary: String {
+        let titles = model.wakeKeyTitles
+        let idx = titles.indices.contains(model.wakeSelectionIndex) ? model.wakeSelectionIndex : 0
+        return titles[idx]
+    }
+
+    private var selectedInputSummary: String {
+        let titles = model.inputKeyTitles
+        let idx = titles.indices.contains(model.inputSelectionIndex) ? model.inputSelectionIndex : 0
+        return titles[idx]
+    }
+
+    private var selectedVoiceModeSummary: String {
+        let titles = AppModel.voiceModeTitles
+        let idx = titles.indices.contains(model.voiceModeIndex) ? model.voiceModeIndex : 0
+        return titles[idx]
+    }
+
     private var voiceSettingsCard: some View {
         Card(padding: DS.s16) {
             VStack(alignment: .leading, spacing: DS.s12) {
@@ -446,33 +475,40 @@ struct ConnectionView: View {
 
                 LabeledRow("虚拟麦克风", systemImage: "mic.and.signal.meter") {
                     HStack(spacing: DS.s8) {
-                        if model.availableDevices.isEmpty {
-                            Picker("", selection: .constant(0)) {
-                                Text(model.emptyDevicePlaceholderTitle).tag(0)
-                            }
-                            .labelsHidden()
-                            .frame(width: 200)
-                            .disabled(true)
-                        } else {
-                            Picker("", selection: $model.selectedDeviceIndex) {
-                                ForEach(Array(model.availableDevices.enumerated()), id: \.offset) { idx, dev in
-                                    Text(model.deviceDisplayTitle(dev)).tag(idx)
+                        Menu {
+                            ForEach(Array(model.availableDevices.enumerated()), id: \.offset) { idx, dev in
+                                Button {
+                                    model.selectedDeviceIndex = idx
+                                } label: {
+                                    if idx == model.selectedDeviceIndex {
+                                        Label(model.deviceDisplayTitle(dev), systemImage: "checkmark")
+                                    } else {
+                                        Text(model.deviceDisplayTitle(dev))
+                                    }
                                 }
                             }
-                            .labelsHidden()
-                            .frame(width: 200)
-                            .disabled(model.isControlsLocked)
+                        } label: {
+                            Text(selectedDeviceSummary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .menuStyle(.borderedButton)
+                        .frame(width: Self.controlColumnWidth - DS.s8 - Self.refreshButtonWidth)
+                        .disabled(model.isControlsLocked || model.availableDevices.isEmpty)
 
                         Button {
                             model.refreshDevices()
                         } label: {
                             Image(systemName: "arrow.clockwise")
+                                .frame(maxWidth: .infinity)
                         }
+                        .frame(width: Self.refreshButtonWidth)
                         .disabled(model.isControlsLocked)
                         .help("刷新设备")
                         .accessibilityLabel("刷新设备")
                     }
+                    .frame(width: Self.controlColumnWidth, alignment: .trailing)
                 }
 
                 if model.availableDevices.isEmpty {
@@ -499,25 +535,27 @@ struct ConnectionView: View {
                     subtitle: "Mac 键盘触发收音",
                     systemImage: "command.square"
                 ) {
-                    HStack(spacing: DS.s8) {
-                        Picker("", selection: wakeBinding) {
-                            ForEach(Array(model.wakeKeyTitles.enumerated()), id: \.offset) { idx, title in
-                                Text(title).tag(idx)
+                    Menu {
+                        ForEach(Array(model.wakeKeyTitles.enumerated()), id: \.offset) { idx, title in
+                            Button {
+                                model.selectWakeKey(at: idx)
+                            } label: {
+                                if idx == model.wakeSelectionIndex {
+                                    Label(title, systemImage: "checkmark")
+                                } else {
+                                    Text(title)
+                                }
                             }
                         }
-                        .labelsHidden()
-                        .frame(width: 185)
-                        .disabled(model.isControlsLocked)
-
-                        if model.wakeSelectionIndex == InputShortcut.choices.count + 1 {
-                            Button("录制…") {
-                                model.promptCustomWakeShortcut()
-                            }
-                            .controlSize(.small)
-                            .disabled(model.isControlsLocked)
-                            .help("录制唤醒键")
-                        }
+                    } label: {
+                        Text(selectedWakeSummary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .menuStyle(.borderedButton)
+                    .frame(width: Self.controlColumnWidth)
+                    .disabled(model.isControlsLocked)
                 }
 
                 CardDivider()
@@ -527,37 +565,52 @@ struct ConnectionView: View {
                     subtitle: "发给语音输入软件",
                     systemImage: "bolt.horizontal.circle"
                 ) {
-                    HStack(spacing: DS.s8) {
-                        Picker("", selection: inputBinding) {
-                            ForEach(Array(model.inputKeyTitles.enumerated()), id: \.offset) { idx, title in
-                                Text(title).tag(idx)
+                    Menu {
+                        ForEach(Array(model.inputKeyTitles.enumerated()), id: \.offset) { idx, title in
+                            Button {
+                                model.selectInputKey(at: idx)
+                            } label: {
+                                if idx == model.inputSelectionIndex {
+                                    Label(title, systemImage: "checkmark")
+                                } else {
+                                    Text(title)
+                                }
                             }
                         }
-                        .labelsHidden()
-                        .frame(width: 185)
-                        .disabled(model.isControlsLocked)
-
-                        if model.inputSelectionIndex == InputShortcut.choices.count {
-                            Button("录制…") {
-                                model.promptCustomInputShortcut()
-                            }
-                            .controlSize(.small)
-                            .disabled(model.isControlsLocked)
-                            .help("录制输入快捷键")
-                        }
+                    } label: {
+                        Text(selectedInputSummary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .menuStyle(.borderedButton)
+                    .frame(width: Self.controlColumnWidth)
+                    .disabled(model.isControlsLocked)
                 }
 
                 CardDivider()
 
                 LabeledRow("语音键", systemImage: "mic.circle") {
-                    Picker("", selection: voiceModeBinding) {
+                    Menu {
                         ForEach(Array(AppModel.voiceModeTitles.enumerated()), id: \.offset) { idx, title in
-                            Text(title).tag(idx)
+                            Button {
+                                model.selectVoiceMode(at: idx)
+                            } label: {
+                                if idx == model.voiceModeIndex {
+                                    Label(title, systemImage: "checkmark")
+                                } else {
+                                    Text(title)
+                                }
+                            }
                         }
+                    } label: {
+                        Text(selectedVoiceModeSummary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .labelsHidden()
-                    .frame(width: 200)
+                    .menuStyle(.borderedButton)
+                    .frame(width: Self.controlColumnWidth)
                     .disabled(model.isControlsLocked)
                 }
             }
