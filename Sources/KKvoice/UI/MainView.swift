@@ -16,7 +16,7 @@ struct MainView: View {
             detailContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 820, idealWidth: 960, maxWidth: .infinity, minHeight: 600, idealHeight: 680, maxHeight: .infinity)
+        .frame(minWidth: 980, idealWidth: 1000, maxWidth: .infinity, minHeight: 660, idealHeight: 680, maxHeight: .infinity)
         .background(DS.windowBackground)
         .preferredColorScheme(model.appearanceMode.colorScheme)
     }

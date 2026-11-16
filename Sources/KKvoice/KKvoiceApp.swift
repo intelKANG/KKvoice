@@ -34,14 +34,15 @@ final class KKvoiceAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
         let hostingController = NSHostingController(rootView: MainView(model: model))
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 960, height: 680),
+            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 680),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.contentViewController = hostingController
-        window.setContentSize(NSSize(width: 960, height: 680))
-        window.minSize = NSSize(width: 820, height: 600)
+        window.setContentSize(NSSize(width: 1000, height: 680))
+        window.contentMinSize = NSSize(width: 980, height: 660)
+        window.minSize = NSSize(width: 980, height: 660)
         window.title = "KKvoice"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true

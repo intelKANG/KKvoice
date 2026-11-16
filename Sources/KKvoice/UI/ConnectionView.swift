@@ -18,23 +18,15 @@ struct ConnectionView: View {
 
     var body: some View {
         PageScaffold(title: "连接") {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: DS.s20) {
-                    deviceHeroCard
-                        .frame(width: 252)
-
-                    VStack(alignment: .leading, spacing: DS.s16) {
-                        statusCard
-                        voiceSettingsCard
-                    }
-                    .frame(minWidth: 360, maxWidth: .infinity)
-                }
+            HStack(alignment: .top, spacing: DS.s20) {
+                deviceHeroCard
+                    .frame(width: 264)
 
                 VStack(alignment: .leading, spacing: DS.s16) {
-                    deviceHeroCard
                     statusCard
                     voiceSettingsCard
                 }
+                .frame(maxWidth: .infinity)
             }
         }
     }
