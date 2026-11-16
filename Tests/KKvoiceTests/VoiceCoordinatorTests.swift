@@ -125,4 +125,53 @@ extension VoiceCoordinatorTests {
         c.press(.keyboard); c.release(.keyboard)
         XCTAssertTrue(c.setKeyboardPassThrough(true))
     }
+    func testKeyboardStartsMacMicFallbackWhenRemoteNotReadyAndFinishesWithoutHotSwap() {
+        var events: [String] = []
+        var reports: [String] = []
+        let c = VoiceCoordinator(
+            beginOutput: { _ in events.append("mac-start") },
+            endOutput: { _ in events.append("mac-stop"); return nil },
+            command: { events.append($0["type"] as? String ?? "?") },
+            shortcut: { events.append("shortcut") },
+            report: { reports.append($0) },
+            allowKeyboardFallbackWhenNotReady: true
+        )
+        // Remote is NOT ready; remote button press is still rejected.
+        c.press(.remote)
+        XCTAssertEqual(c.phase, .idle)
+        XCTAssertEqual(reports.last, "未连接遥控器")
+
+        // Keyboard wake press starts local Mac-mic fallback immediately without ensure_capture.
+        c.press(.keyboard)
+        XCTAssertTrue(c.isUsingLocalFallback)
+        XCTAssertEqual(events, ["set_escape_cancel", "mac-start"])
+        if case .recording = c.phase {} else { XCTFail("Mac mic session should enter recording immediately") }
+        XCTAssertEqual(reports.last, "等待释放唤醒键")
+
+        // Releasing physical wake key sends the start shortcut and reports 收音中.
+        c.release(.keyboard)
+        XCTAssertEqual(events, ["set_escape_cancel", "mac-start", "shortcut"])
+        XCTAssertEqual(reports.last, "收音中")
+
+        // Mid-session BLE disconnect or scan failure must NOT abort the active Mac-mic session.
+        c.setReady(false)
+        if case .recording = c.phase {} else { XCTFail("BLE disconnect must not abort active Mac-mic session") }
+
+        // Mid-session remote becoming ready must NOT hot-swap the active Mac-mic session.
+        c.setReady(true)
+        XCTAssertTrue(c.isUsingLocalFallback)
+
+        // Second keyboard wake press/release stops the Mac-mic session without sending stop_capture.
+        c.press(.keyboard)
+        XCTAssertEqual(events, ["set_escape_cancel", "mac-start", "shortcut", "set_escape_cancel", "mac-stop"])
+        c.release(.keyboard)
+        XCTAssertEqual(events, ["set_escape_cancel", "mac-start", "shortcut", "set_escape_cancel", "mac-stop", "shortcut"])
+        XCTAssertEqual(c.phase, .idle)
+
+        // Next session re-decides: since remote is now ready, it uses the remote path (ensure_capture).
+        events.removeAll()
+        c.press(.keyboard)
+        XCTAssertFalse(c.isUsingLocalFallback)
+        XCTAssertEqual(events, ["ensure_capture", "set_escape_cancel", "mac-start"])
+    }
 }

@@ -21,12 +21,17 @@ final class VoiceCoordinator {
     private var deferredToggle: UUID?
     private var timeoutWork: DispatchWorkItem?
     private var needsRecovery = false
+    var allowKeyboardFallbackWhenNotReady: Bool
+    private(set) var isUsingLocalFallback = false
+    private var lastSessionWasLocalFallback = false
 
     init(beginOutput: @escaping BeginOutput, endOutput: @escaping EndOutput,
          command: @escaping ([String: Any]) throws -> Void,
-         shortcut: @escaping () throws -> Void, report: @escaping (String) -> Void) {
+         shortcut: @escaping () throws -> Void, report: @escaping (String) -> Void,
+         allowKeyboardFallbackWhenNotReady: Bool = false) {
         self.beginOutput = beginOutput; self.endOutput = endOutput
         self.command = command; self.shortcut = shortcut; self.report = report
+        self.allowKeyboardFallbackWhenNotReady = allowKeyboardFallbackWhenNotReady
     }
     var phase: VoiceSession.Phase { session.phase }
     @discardableResult func setRemoteGesture(_ gesture: VoiceSession.RemoteGesture) -> Bool {
@@ -56,6 +61,9 @@ final class VoiceCoordinator {
         if value {
             if case .idle = session.phase, !passedThroughWhileUnavailable { needsRecovery = false }
         } else {
+            if (isUsingLocalFallback && activeID != nil) || (lastSessionWasLocalFallback && deferredToggle != nil) {
+                return
+            }
             cancel()
             if deferredToggle != nil {
                 deferredToggle = nil
@@ -67,7 +75,13 @@ final class VoiceCoordinator {
     }
     func press(_ source: VoiceSession.Source) {
         if source == .keyboard { keyboardHeld = true }
-        guard ready else {
+        let canUseLocalFallback: Bool
+        if case .idle = session.phase {
+            canUseLocalFallback = (!ready && source == .keyboard && allowKeyboardFallbackWhenNotReady)
+        } else {
+            canUseLocalFallback = isUsingLocalFallback
+        }
+        guard ready || canUseLocalFallback else {
             if source == .keyboard && keyboardPassThrough {
                 passedThroughWhileUnavailable = true
                 needsRecovery = true
@@ -77,6 +91,10 @@ final class VoiceCoordinator {
         }
         guard deferredToggle == nil else { report("等待释放唤醒键。") ; return }
         guard !needsRecovery else { report("输入软件状态未确认") ; return }
+        if case .idle = session.phase {
+            isUsingLocalFallback = !ready
+            lastSessionWasLocalFallback = isUsingLocalFallback
+        }
         apply(relay.handle(session.press(source, at: ProcessInfo.processInfo.systemUptime),
                            origin: source == .keyboard ? keyboardOrigin : .remote))
     }
@@ -85,8 +103,18 @@ final class VoiceCoordinator {
         apply(relay.handle(session.release(source, at: ProcessInfo.processInfo.systemUptime),
                            origin: source == .keyboard ? keyboardOrigin : .remote))
         if source == .keyboard {
-            if let id = deferredToggle { deferredToggle = nil; apply([.sendToggle(id)]) }
-            if case .recording(let id) = session.phase, activeID == id { apply(relay.audioReady(id)) }
+            if let id = deferredToggle {
+                deferredToggle = nil
+                lastSessionWasLocalFallback = false
+                apply([.sendToggle(id)])
+            }
+            if case .recording(let id) = session.phase, activeID == id {
+                let actions = relay.audioReady(id)
+                apply(actions)
+                if case .recording(id) = session.phase, !needsRecovery {
+                    report("收音中")
+                }
+            }
         }
     }
     /// The helper emits an interrupted key-up when the event tap times out or
@@ -129,31 +157,45 @@ final class VoiceCoordinator {
             case .capture(.begin(let id)):
                 do {
                     activeID = id
-                    try command(["type": "ensure_capture"])
-                    try command(["type": "set_escape_cancel", "enabled": true])
-                    // Authorize the helper's short START_SEARCH/AUDIO_START probe
-                    // before opening CoreAudio. AudioDeviceStart can block long
-                    // enough for the helper's probe deadline to expire.
-                    try beginOutput(id)
-                    report("正在启动收音…")
-                    let timeout = DispatchWorkItem { [weak self] in
-                        guard let self, self.phase == .starting(id) else { return }
-                        self.audioFailed("收音启动超时")
+                    if isUsingLocalFallback {
+                        try? command(["type": "set_escape_cancel", "enabled": true])
+                        try beginOutput(id)
+                        audioStarted()
+                    } else {
+                        try command(["type": "ensure_capture"])
+                        try command(["type": "set_escape_cancel", "enabled": true])
+                        // Authorize the helper's short START_SEARCH/AUDIO_START probe
+                        // before opening CoreAudio. AudioDeviceStart can block long
+                        // enough for the helper's probe deadline to expire.
+                        try beginOutput(id)
+                        report("正在启动收音…")
+                        let timeout = DispatchWorkItem { [weak self] in
+                            guard let self, self.phase == .starting(id) else { return }
+                            self.audioFailed("收音启动超时")
+                        }
+                        timeoutWork = timeout
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: timeout)
                     }
-                    timeoutWork = timeout
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: timeout)
                 } catch {
                     activeID = id
                     // The helper may already have been authorized; cancel both
                     // sides before reporting the failed start.
-                    apply(relay.failed(id))
+                    if keyboardPassThrough {
+                        apply(relay.failed(id))
+                    } else {
+                        relay.cancelled(id)
+                    }
                     apply(relay.handle(session.cancel(), origin: .remote))
                     report(error.localizedDescription)
                 }
             case .capture(.end(let id)):
                 guard activeID == id else { continue }
+                let wasLocalFallback = isUsingLocalFallback
+                isUsingLocalFallback = false
                 timeoutWork?.cancel(); timeoutWork = nil
-                try? command(["type": "stop_capture"])
+                if !wasLocalFallback {
+                    try? command(["type": "stop_capture"])
+                }
                 try? command(["type": "set_escape_cancel", "enabled": false])
                 let releaseError = endOutput(id)
                 activeID = nil

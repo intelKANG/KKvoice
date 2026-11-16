@@ -120,3 +120,106 @@ do {
     expect(left[0] == 0 && left[1] == 0 && right[0] == 0 && right[1] == 0, "malformed render clears output")
     print("PASS: synthetic interleaved and planar CoreAudio buffer output")
 }
+
+// InputDeviceCatalog exclusions and fallback resolution (hardware-free).
+do {
+    expect(KKInputDeviceCatalog.isExcludedVirtualDevice(uid: "KKvoiceMi2ch_UID", name: "KKvoice Mic"), "exclude KKvoice Mic")
+    expect(KKInputDeviceCatalog.isExcludedVirtualDevice(uid: "vRemoteDr2ch_UID", name: "vRemote"), "exclude vRemote")
+    expect(KKInputDeviceCatalog.isExcludedVirtualDevice(uid: "BlackHole2ch_UID", name: "BlackHole 2ch"), "exclude BlackHole")
+    expect(KKInputDeviceCatalog.isExcludedVirtualDevice(uid: "any", name: "Virtual", transportType: kAudioDeviceTransportTypeVirtual), "exclude virtual transport")
+    expect(!KKInputDeviceCatalog.isExcludedVirtualDevice(uid: "BuiltInMicrophoneDevice", name: "MacBook Pro麦克风", transportType: kAudioDeviceTransportTypeBuiltIn), "keep built-in mic")
+
+    let builtIn = KKAudioInputDevice(uid: "BuiltInMicrophoneDevice", name: "MacBook Pro麦克风", transportType: kAudioDeviceTransportTypeBuiltIn)
+    let usbMic = KKAudioInputDevice(uid: "USB_Mic_UID", name: "Blue Yeti", transportType: kAudioDeviceTransportTypeUSB)
+    let virtual = KKAudioInputDevice(uid: "KKvoiceMi2ch_UID", name: "KKvoice Mic", transportType: kAudioDeviceTransportTypeVirtual)
+
+    // System default is physical USB mic -> follow system default.
+    let resolvedUSB = KKInputDeviceCatalog.resolve(selectedUID: "", available: [builtIn, usbMic, virtual], systemDefaultUID: "USB_Mic_UID")
+    expect(resolvedUSB == usbMic, "system default physical device selected")
+
+    // System default is virtual KKvoice Mic -> fall back to built-in mic!
+    let resolvedFallback = KKInputDeviceCatalog.resolve(selectedUID: "", available: [usbMic, builtIn, virtual], systemDefaultUID: "KKvoiceMi2ch_UID")
+    expect(resolvedFallback == builtIn, "virtual system default falls back to built-in mic")
+
+    // Explicit UID selection -> select that physical device.
+    let explicit = KKInputDeviceCatalog.resolve(selectedUID: "USB_Mic_UID", available: [builtIn, usbMic], systemDefaultUID: "BuiltInMicrophoneDevice")
+    expect(explicit == usbMic, "explicit UID selected")
+
+    print("PASS: InputDeviceCatalog virtual exclusion and built-in fallback")
+}
+
+// MacMicrophoneSource & AudioSourceRouter per-session routing without hot-swap.
+do {
+    final class FakeInputDriver: MacMicrophoneInputDriver {
+        var startedUID: String?
+        var stopCount = 0
+        var lastStopError: String? = nil
+        var callback: ((UnsafePointer<AudioBufferList>, AudioStreamBasicDescription) -> Void)?
+        func start(deviceUID: String, onInput: @escaping (UnsafePointer<AudioBufferList>, AudioStreamBasicDescription) -> Void) throws {
+            startedUID = deviceUID
+            callback = onInput
+        }
+        func stop() {
+            stopCount += 1
+            callback = nil
+            startedUID = nil
+        }
+    }
+
+    let sink = FakeOutput()
+    let inputDriver = FakeInputDriver()
+    var permission: MacMicrophonePermissionStatus = .authorized
+    let macSource = MacMicrophoneSource(
+        input: inputDriver,
+        output: sink,
+        permissionCheck: { permission },
+        permissionRequest: { $0(true) }
+    )
+    let builtIn = KKAudioInputDevice(uid: "BuiltInMicrophoneDevice", name: "MacBook Pro麦克风", transportType: kAudioDeviceTransportTypeBuiltIn)
+    let suiteName = "local.kkvoice.audiotests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let router = AudioSourceRouter(
+        output: sink,
+        remoteBridge: RemoteAudioBridge(output: sink),
+        macSource: macSource,
+        userDefaults: defaults,
+        listDevices: { [builtIn] },
+        defaultUIDProvider: { "KKvoiceMi2ch_UID" }
+    )
+
+    // Session 1: remote not ready -> routes Mac mic into KKvoice Mic.
+    let s1 = UUID()
+    let source1 = try router.beginSession(session: s1, virtualDeviceUID: "KKvoiceMi2ch_UID", remoteReady: false)
+    expect(source1 == .mac(uid: "BuiltInMicrophoneDevice", name: "MacBook Pro麦克风"), "session 1 uses Mac mic")
+    expect(router.currentSource == source1, "currentSource published")
+    expect(inputDriver.startedUID == "BuiltInMicrophoneDevice", "physical mic opened")
+    expect(sink.selectedUID == "KKvoiceMi2ch_UID", "virtual output opened")
+    // Stray remote frames during Mac mic session must be ignored (no hot-swap).
+    expect(!router.receiveRemotePCM(pcm([16384, 16384])), "remote PCM ignored during Mac mic session")
+    _ = router.endSession(session: s1)
+    expect(router.currentSource == nil && inputDriver.startedUID == nil && inputDriver.stopCount == 1, "Mac mic released on endSession")
+
+    // Session 2: remote ready -> routes remote PCM into KKvoice Mic without opening Mac mic.
+    let s2 = UUID()
+    let source2 = try router.beginSession(session: s2, virtualDeviceUID: "KKvoiceMi2ch_UID", remoteReady: true)
+    expect(source2 == .remote, "session 2 uses remote")
+    expect(inputDriver.startedUID == nil, "Mac mic never opened during remote session")
+    expect(router.receiveRemotePCM(pcm([16384, 16384])), "remote PCM accepted during remote session")
+    _ = router.endSession(session: s2)
+
+    // Permission denied -> throws clear Chinese error and never opens devices.
+    permission = .denied
+    do {
+        _ = try router.beginSession(session: UUID(), virtualDeviceUID: "KKvoiceMi2ch_UID", remoteReady: false)
+        fatalError("expected permissionDenied")
+    } catch let error as MacMicrophoneError {
+        expect(error == .permissionDenied && error.localizedDescription == "需要麦克风权限", "permission denied message")
+    }
+    expect(inputDriver.startedUID == nil, "no device opened when permission denied")
+    print("PASS: MacMicrophoneSource and AudioSourceRouter session lifecycle")
+} catch {
+    fputs("FAIL: \(error)\n", stderr)
+    exit(1)
+}
