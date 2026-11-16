@@ -8,7 +8,6 @@ struct ButtonMappingsView: View {
     @State private var draft: ButtonMappings
     @State private var selectedButtonID: String
     @State private var saveFeedback: String? = nil
-    @State private var containerWidth: CGFloat = 650
 
     private let customShortcutChoice = "__shortcut"
     private let chooseAppChoice = "__app"
@@ -21,66 +20,6 @@ struct ButtonMappingsView: View {
         let name: String
         let symbol: String
         let isFixedVoice: Bool
-    }
-
-    private struct WorkbenchMetrics {
-        let isThreeColumn: Bool
-        let columnSpacing: CGFloat
-        let remoteWidth: CGFloat
-        let remoteHeight: CGFloat
-        let stageWidth: CGFloat
-        let stageHeight: CGFloat
-        let leftCardSpacing: CGFloat
-        let rightCardSpacing: CGFloat
-        let columnWidth: CGFloat
-        let menuWidth: CGFloat
-
-        init(containerWidth: CGFloat) {
-            let contentWidth = max(400, containerWidth - DS.s24 * 2)
-            if contentWidth >= 580 {
-                self.isThreeColumn = true
-                if contentWidth >= 720 {
-                    self.columnSpacing = 16
-                    self.remoteWidth = 148
-                    self.remoteHeight = 384
-                    self.stageWidth = 160
-                    self.stageHeight = 392
-                    self.leftCardSpacing = 14
-                    self.rightCardSpacing = 6
-                } else if contentWidth >= 630 {
-                    self.columnSpacing = 12
-                    self.remoteWidth = 122
-                    self.remoteHeight = 316
-                    self.stageWidth = 132
-                    self.stageHeight = 326
-                    self.leftCardSpacing = 12
-                    self.rightCardSpacing = 5
-                } else {
-                    self.columnSpacing = 10
-                    self.remoteWidth = 102
-                    self.remoteHeight = 264
-                    self.stageWidth = 112
-                    self.stageHeight = 274
-                    self.leftCardSpacing = 10
-                    self.rightCardSpacing = 4
-                }
-                let colW = max(176, (contentWidth - stageWidth - columnSpacing * 2) / 2)
-                self.columnWidth = colW
-                self.menuWidth = min(130, max(78, floor(colW - 118)))
-            } else {
-                self.isThreeColumn = false
-                self.columnSpacing = 12
-                self.remoteWidth = 60
-                self.remoteHeight = 156
-                self.stageWidth = 72
-                self.stageHeight = 168
-                self.leftCardSpacing = 6
-                self.rightCardSpacing = 6
-                let colW = max(168, (contentWidth - 12) / 2)
-                self.columnWidth = colW
-                self.menuWidth = min(126, max(74, floor(colW - 118)))
-            }
-        }
     }
 
     // Left column (top-to-bottom matching the physical Google TV remote left side)
@@ -121,47 +60,20 @@ struct ButtonMappingsView: View {
         draft != model.mappings
     }
 
-    private var metrics: WorkbenchMetrics {
-        WorkbenchMetrics(containerWidth: containerWidth)
-    }
-
     var body: some View {
-        let currentMetrics = metrics
-
         VStack(spacing: 0) {
             PageScaffold(
                 title: "按键",
                 subtitle: nil,
-                scrollable: true
+                scrollable: false
             ) {
                 VStack(alignment: .leading, spacing: DS.s12) {
                     switcherBannerCard
-                    mappingWorkbench(metrics: currentMetrics)
+                    mappingWorkbench
                 }
             }
 
             stickyBottomBar
-        }
-        .background(
-            GeometryReader { geo in
-                Color.clear
-                    .preference(key: MappingContainerWidthKey.self, value: geo.size.width)
-                    .onAppear {
-                        if geo.size.width > 0 {
-                            containerWidth = geo.size.width
-                        }
-                    }
-                    .onChange(of: geo.size.width) { newWidth in
-                        if newWidth > 0 {
-                            containerWidth = newWidth
-                        }
-                    }
-            }
-        )
-        .onPreferenceChange(MappingContainerWidthKey.self) { newWidth in
-            if newWidth > 0, abs(newWidth - containerWidth) > 0.5 {
-                containerWidth = newWidth
-            }
         }
         .background(DS.windowBackground)
         .onAppear {
@@ -235,78 +147,39 @@ struct ButtonMappingsView: View {
         }
     }
 
-    // MARK: - Responsive Center Remote + Two-Column Workbench
+    // MARK: - Standard Three-Column Workbench
 
-    @ViewBuilder
-    private func mappingWorkbench(metrics: WorkbenchMetrics) -> some View {
-        if metrics.isThreeColumn {
-            HStack(alignment: .top, spacing: metrics.columnSpacing) {
-                // Left column (7 buttons, top-aligned with remote and right column)
-                VStack(spacing: metrics.leftCardSpacing) {
-                    ForEach(Self.leftColumnItems) { item in
-                        buttonRowCard(for: item, side: .left, menuWidth: metrics.menuWidth)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .top)
-
-                // Center remote stage (scales proportionally with window width)
-                centerRemoteStage(metrics: metrics)
-                    .frame(width: metrics.stageWidth, alignment: .top)
-
-                // Right column (8 items including fixed voice card, top-aligned)
-                VStack(spacing: metrics.rightCardSpacing) {
-                    ForEach(Self.rightColumnItems) { item in
-                        buttonRowCard(for: item, side: .right, menuWidth: metrics.menuWidth)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .top)
-            }
-            .overlayPreferenceValue(MappingAnchorPrefKey.self) { prefs in
-                GeometryReader { geo in
-                    connectorLinesCanvas(prefs: prefs, in: geo)
-                }
-                .allowsHitTesting(false)
-            }
-        } else {
-            // Compact 2-column layout when window is narrow: remote on top, two columns below
-            VStack(spacing: DS.s12) {
-                Card(padding: 10) {
-                    HStack(spacing: DS.s16) {
-                        Spacer(minLength: 0)
-                        RemoteIllustration(
-                            highlighted: selectedButtonID,
-                            compact: true,
-                            width: metrics.remoteWidth,
-                            height: metrics.remoteHeight
-                        ) { tappedID in
-                            withAnimation(DS.stateAnimation) {
-                                selectedButtonID = tappedID
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
-                }
-
-                HStack(alignment: .top, spacing: metrics.columnSpacing) {
-                    VStack(spacing: metrics.leftCardSpacing) {
-                        ForEach(Self.leftColumnItems) { item in
-                            buttonRowCard(for: item, side: .left, menuWidth: metrics.menuWidth)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .top)
-
-                    VStack(spacing: metrics.rightCardSpacing) {
-                        ForEach(Self.rightColumnItems) { item in
-                            buttonRowCard(for: item, side: .right, menuWidth: metrics.menuWidth)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .top)
+    private var mappingWorkbench: some View {
+        HStack(alignment: .top, spacing: DS.s16) {
+            // Left column (7 buttons, top-aligned with remote and right column)
+            VStack(spacing: 14) {
+                ForEach(Self.leftColumnItems) { item in
+                    buttonRowCard(for: item, side: .left)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .top)
+
+            // Center remote stage (top-aligned with both card columns)
+            centerRemoteStage
+                .frame(width: 168, alignment: .top)
+
+            // Right column (8 items including fixed voice card, top-aligned)
+            VStack(spacing: 6) {
+                ForEach(Self.rightColumnItems) { item in
+                    buttonRowCard(for: item, side: .right)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .top)
+        }
+        .overlayPreferenceValue(MappingAnchorPrefKey.self) { prefs in
+            GeometryReader { geo in
+                connectorLinesCanvas(prefs: prefs, in: geo)
+            }
+            .allowsHitTesting(false)
         }
     }
 
-    private func centerRemoteStage(metrics: WorkbenchMetrics) -> some View {
+    private var centerRemoteStage: some View {
         ZStack {
             // Soft Google-TV inspired stage aura behind the remote
             Capsule(style: .circular)
@@ -321,7 +194,7 @@ struct ButtonMappingsView: View {
                         endPoint: .bottom
                     )
                 )
-                .frame(width: metrics.stageWidth, height: metrics.stageHeight)
+                .frame(width: 160, height: 392)
                 .overlay(
                     Capsule(style: .circular)
                         .strokeBorder(DS.border, lineWidth: 1)
@@ -329,9 +202,7 @@ struct ButtonMappingsView: View {
 
             RemoteIllustration(
                 highlighted: selectedButtonID,
-                compact: false,
-                width: metrics.remoteWidth,
-                height: metrics.remoteHeight
+                compact: false
             ) { tappedID in
                 withAnimation(DS.stateAnimation) {
                     selectedButtonID = tappedID
@@ -351,11 +222,11 @@ struct ButtonMappingsView: View {
     }
 
     @ViewBuilder
-    private func buttonRowCard(for item: ButtonMeta, side: ColumnSide, menuWidth: CGFloat) -> some View {
+    private func buttonRowCard(for item: ButtonMeta, side: ColumnSide) -> some View {
         if item.isFixedVoice {
             voiceFixedCard(for: item, side: side)
         } else {
-            configurableButtonCard(for: item, side: side, menuWidth: menuWidth)
+            configurableButtonCard(for: item, side: side)
         }
     }
 
@@ -404,7 +275,7 @@ struct ButtonMappingsView: View {
         }
     }
 
-    private func configurableButtonCard(for item: ButtonMeta, side: ColumnSide, menuWidth: CGFloat) -> some View {
+    private func configurableButtonCard(for item: ButtonMeta, side: ColumnSide) -> some View {
         let isSelected = (selectedButtonID == item.id)
         let lockedBySwitcher = isSwitcherLocked(item.id)
         let currentAction = draft.buttons[item.id] ?? .none
@@ -437,7 +308,7 @@ struct ButtonMappingsView: View {
                         .frame(width: 15, height: 15)
                 }
 
-                actionMenu(for: item.id, lockedBySwitcher: lockedBySwitcher, menuWidth: menuWidth)
+                actionMenu(for: item.id, lockedBySwitcher: lockedBySwitcher)
             }
             .frame(minHeight: 28)
             .contentShape(Rectangle())
@@ -466,7 +337,7 @@ struct ButtonMappingsView: View {
     }
 
     @ViewBuilder
-    private func actionMenu(for id: String, lockedBySwitcher: Bool, menuWidth: CGFloat) -> some View {
+    private func actionMenu(for id: String, lockedBySwitcher: Bool) -> some View {
         let action = draft.buttons[id] ?? .none
         let desired = desiredMenuChoice(for: action)
         let summary = lockedBySwitcher ? "切换应用" : actionSummary(for: id)
@@ -555,7 +426,7 @@ struct ButtonMappingsView: View {
         }
         .menuStyle(.borderedButton)
         .controlSize(.small)
-        .frame(width: menuWidth)
+        .frame(width: 130)
         .disabled(lockedBySwitcher)
         .simultaneousGesture(
             TapGesture().onEnded {
@@ -853,17 +724,7 @@ struct ButtonMappingsView: View {
     }
 }
 
-// MARK: - Container Width & Anchor Preferences
-
-private struct MappingContainerWidthKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        let next = nextValue()
-        if next > 0 {
-            value = next
-        }
-    }
-}
+// MARK: - Anchor Preferences for Connector Lines
 
 private struct MappingAnchorItem {
     enum Kind {
