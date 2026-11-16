@@ -25,11 +25,11 @@
 ## 下载与安装
 
 1. **下载应用**：前往 [GitHub Releases](https://github.com/intelKANG/KKvoice/releases/latest) 下载最新 `KKvoice-*.zip`，解压后将 `KKvoice.app` 拖入 `/Applications`（应用程序）。
-2. **首次打开**：应用使用本地 Ad-hoc 签名（未经过 Apple 公证）。首次打开请**在访达中右键点击 `KKvoice.app` 选择「打开」**，或在终端执行：
+2. **首次打开**：应用未经过 Apple 公证（Notarization）。首次打开请**在访达中右键点击 `KKvoice.app` 选择「打开」**，或在终端执行：
    ```sh
    xattr -dr com.apple.quarantine /Applications/KKvoice.app
    ```
-3. **安装虚拟声卡**：首次打开应用后，点击界面上的**「安装 KKvoice Mic」**并输入管理员密码即可完成驱动安装（也可选择系统已有的 BlackHole 兼容虚拟音频设备）。
+3. **安装虚拟声卡**：首次启动若未检测到虚拟声卡会自动提示安装，也可在「连接」或「通用」页面点击**「安装 KKvoice Mic」**并输入管理员密码完成安装（或选择系统已有的 BlackHole 兼容虚拟音频设备）。
 4. **授予系统权限**：根据功能需要在「系统设置 → 隐私与安全性」中开启：
    - **蓝牙**：连接并接收遥控器语音与按键
    - **辅助功能**：发送模拟快捷键与监听唤醒键
@@ -76,7 +76,7 @@ open dist/KKvoice.app
 **KKvoice** is a native macOS companion app for Google TV / Chromecast voice remotes. It turns the remote into a wireless microphone for voice dictation apps (such as Vokie), automatically falls back to a selected Mac microphone when the remote is disconnected, maps remote buttons to macOS shortcuts/apps/text, and integrates with SnapNote.
 
 - **Download**: Grab the latest archive from [Releases](https://github.com/intelKANG/KKvoice/releases/latest) and move `KKvoice.app` to `/Applications`.
-- **First Launch (Ad-hoc Signed)**: Right-click `KKvoice.app` → **Open**, or run:
+- **First Launch (Not Notarized)**: Right-click `KKvoice.app` → **Open**, or run:
   ```sh
   xattr -dr com.apple.quarantine /Applications/KKvoice.app
   ```

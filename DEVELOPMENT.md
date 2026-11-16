@@ -28,7 +28,7 @@ swift test
 ./Scripts/build-app.sh
 ```
 
-`Scripts/build-helper.sh` compiles an arm64/x86_64 Objective-C helper with the macOS 12 deployment target. `Scripts/build-app.sh` runs that build, compiles the Swift package in release mode, copies the icon, helper, and (when built from BlackHole source) `KKvoiceMic.driver` into `dist/KKvoice.app`, and applies an ad-hoc signature. Do not treat this signature as suitable for notarized distribution or as stable TCC identity across signing changes.
+`Scripts/build-helper.sh` compiles an arm64/x86_64 Objective-C helper with the macOS 12 deployment target. `Scripts/build-app.sh` runs that build, compiles the Swift package in release mode, copies the icon, helper, and (when built from BlackHole source) `KKvoiceMic.driver` into `dist/KKvoice.app`, and signs inside-out using the detected local Apple signing identity (`Developer ID Application` or `Apple Development` with Hardened Runtime, falling back to `-` ad-hoc signing when no certificate is found).
 
 ## Audio driver
 
