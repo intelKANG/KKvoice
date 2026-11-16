@@ -6,26 +6,8 @@ struct ConnectionView: View {
     @ObservedObject var model: AppModel
     @State private var pulseRing = false
 
-    private var wakeBinding: Binding<Int> {
-        Binding(
-            get: { model.wakeSelectionIndex },
-            set: { model.selectWakeKey(at: $0) }
-        )
-    }
-
-    private var inputBinding: Binding<Int> {
-        Binding(
-            get: { model.inputSelectionIndex },
-            set: { model.selectInputKey(at: $0) }
-        )
-    }
-
-    private var voiceModeBinding: Binding<Int> {
-        Binding(
-            get: { model.voiceModeIndex },
-            set: { model.selectVoiceMode(at: $0) }
-        )
-    }
+    private static let controlColumnWidth: CGFloat = 240
+    private static let refreshButtonWidth: CGFloat = 28
 
     private var remoteHighlightedID: String? {
         if model.isRecording {
@@ -36,15 +18,23 @@ struct ConnectionView: View {
 
     var body: some View {
         PageScaffold(title: "连接") {
-            HStack(alignment: .top, spacing: DS.s20) {
-                deviceHeroCard
-                    .frame(width: 264)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: DS.s20) {
+                    deviceHeroCard
+                        .frame(width: 252)
+
+                    VStack(alignment: .leading, spacing: DS.s16) {
+                        statusCard
+                        voiceSettingsCard
+                    }
+                    .frame(minWidth: 360, maxWidth: .infinity)
+                }
 
                 VStack(alignment: .leading, spacing: DS.s16) {
+                    deviceHeroCard
                     statusCard
                     voiceSettingsCard
                 }
-                .frame(maxWidth: .infinity)
             }
         }
     }
@@ -420,9 +410,6 @@ struct ConnectionView: View {
                 .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
         )
     }
-
-    private static let controlColumnWidth: CGFloat = 260
-    private static let refreshButtonWidth: CGFloat = 28
 
     private var selectedDeviceSummary: String {
         guard !model.availableDevices.isEmpty else {

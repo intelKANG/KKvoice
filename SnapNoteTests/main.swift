@@ -12,6 +12,7 @@ let tagged = SnapNoteRecord(id:noteID, createdAtMs:1000, title:".", bodyPreview:
 actor MockService: SnapNoteService {
     var snapshots: [[UUID: SnapNoteRecord]]
     var taggedIDs: [UUID] = []
+    var taggedNames: [String] = []
     var failWrite = false
     var verificationFails = false
     init(_ snapshots: [[UUID: SnapNoteRecord]]) { self.snapshots = snapshots }
@@ -21,11 +22,13 @@ actor MockService: SnapNoteService {
         guard let result = snapshots.first else { throw SnapNoteError.protocolError }
         return result
     }
-    func addFlashTag(noteID: UUID) async throws {
+    func addFlashTag(noteID: UUID, tagName: String) async throws {
         taggedIDs.append(noteID)
+        taggedNames.append(tagName)
         if failWrite { throw SnapNoteError.timeout }
     }
     func writes() -> [UUID] { taggedIDs }
+    func writeTagNames() -> [String] { taggedNames }
     func setFailWrite() { failWrite = true }
 }
 
@@ -95,7 +98,7 @@ final class MockWire: @unchecked Sendable {
 actor SlowService: SnapNoteService {
     func verifyService() async throws { try await Task.sleep(nanoseconds: 1_000_000_000) }
     func recent() async throws -> [UUID: SnapNoteRecord] { [:] }
-    func addFlashTag(noteID: UUID) async throws {}
+    func addFlashTag(noteID: UUID, tagName: String) async throws {}
 }
 
 func waitFor(_ test: @Sendable () -> Bool) async throws {
@@ -112,6 +115,12 @@ func waitFor(_ test: @Sendable () -> Bool) async throws {
         expect(!SnapNoteCoordinator.validShortcut("shortcut:none:Y"), "no-modifier shortcut rejected")
         expect(!SnapNoteCoordinator.validShortcut("shortcut:command+command:Y"), "duplicate modifier rejected")
         expect(!SnapNoteCoordinator.validShortcut("shortcut:command:LeftShift"), "modifier as main key rejected")
+        expect(SnapNoteCoordinator.validTagName("闪念"), "default tag valid")
+        expect(SnapNoteCoordinator.validTagName("语音笔记"), "custom tag valid")
+        expect(!SnapNoteCoordinator.validTagName(""), "empty tag rejected")
+        expect(!SnapNoteCoordinator.validTagName("   "), "whitespace tag rejected")
+        expect(!SnapNoteCoordinator.validTagName("换行\n标签"), "multiline tag rejected")
+        expect(!SnapNoteCoordinator.validTagName(String(repeating: "字", count: 21)), "overlong tag rejected")
         do { _ = try SnapNoteMCPClient(token:"bad\nsecret", transport:MockHTTP()); fatalError("invalid token accepted") }
         catch SnapNoteError.invalidToken {}
 
@@ -149,6 +158,14 @@ func waitFor(_ test: @Sendable () -> Bool) async throws {
         expect(cooldown.error == .busy, "cooldown prevents repeat")
         let callCount = await native.count()
         expect(callCount == 1, "only one native creation")
+
+        let customTagged = SnapNoteRecord(id:noteID, createdAtMs:1000, title:".", bodyPreview:".", preview:".", plainTextCount:1, tagNames:["灵感笔记"])
+        let customTagService = MockService([[:], [:], [noteID:marker], [noteID:marker], [noteID:customTagged]])
+        let customCoordinator = SnapNoteCoordinator(client:customTagService, native:MockNative(), isRecording:{false}, nowMs:{1000}, delay:{_ in})
+        let customOutcome = await customCoordinator.createAndTag(shortcut:"shortcut:command+option:N", tagName:"灵感笔记")
+        expect(customOutcome.succeeded && customOutcome.noteID == noteID, "custom tag create and verify")
+        let writtenTags = await customTagService.writeTagNames()
+        expect(writtenTags == ["灵感笔记"], "custom tag name forwarded to service")
 
         let concurrent = SnapNoteRecord(id:otherID, createdAtMs:1000, title:".", bodyPreview:".", preview:".", plainTextCount:1, tagNames:[])
         let ambiguousService = MockService([[:], [:], [noteID:marker, otherID:concurrent]])

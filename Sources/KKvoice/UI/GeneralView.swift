@@ -17,6 +17,13 @@ struct GeneralView: View {
         )
     }
 
+    private var menuBarIconBinding: Binding<Bool> {
+        Binding(
+            get: { model.showMenuBarIcon },
+            set: { model.setShowMenuBarIcon($0) }
+        )
+    }
+
     var body: some View {
         PageScaffold(title: "通用") {
             VStack(alignment: .leading, spacing: DS.s16) {
@@ -76,11 +83,14 @@ struct GeneralView: View {
                 CardDivider()
 
                 LabeledRow(
-                    "菜单栏常驻",
-                    subtitle: "关闭窗口时隐藏至菜单栏",
+                    "菜单栏图标",
+                    subtitle: model.showMenuBarIcon ? "关闭窗口时隐藏至菜单栏" : "已关闭，关闭窗口时保留在程序坞",
                     systemImage: "menubar.rectangle"
                 ) {
-                    StatusPill(title: "已启用", tone: .connected)
+                    Toggle("", isOn: menuBarIconBinding)
+                        .labelsHidden()
+                        .toggleStyle(.kkSwitch)
+                        .accessibilityLabel("菜单栏图标")
                 }
             }
         }

@@ -1,7 +1,7 @@
 import Foundation
 
 public enum SnapNoteError: Error, Equatable, Sendable {
-    case invalidToken, notConfigured, invalidShortcut, recording, busy
+    case invalidToken, notConfigured, invalidShortcut, invalidTag, recording, busy
     case unavailable, unauthorized, timeout, protocolError, sessionExpired
     case operationFailed, unstableBaseline, multipleCandidates, candidateRejected
     case candidateNotFound, tagUnverified, cancelled
@@ -32,7 +32,13 @@ public protocol SnapNoteService: Sendable {
     func verifyService() async throws
     func recent() async throws -> [UUID: SnapNoteRecord]
     /// A failed or timed-out write has an unknown outcome and MUST NOT be retried automatically.
-    func addFlashTag(noteID: UUID) async throws
+    func addFlashTag(noteID: UUID, tagName: String) async throws
+}
+
+public extension SnapNoteService {
+    func addFlashTag(noteID: UUID) async throws {
+        try await addFlashTag(noteID: noteID, tagName: "闪念")
+    }
 }
 
 public struct SnapNoteHTTPResponse: Sendable {

@@ -7,7 +7,7 @@ struct MainView: View {
     var body: some View {
         HStack(spacing: 0) {
             sidebar
-                .frame(width: 208)
+                .frame(width: 196)
 
             Rectangle()
                 .fill(DS.divider)
@@ -16,7 +16,7 @@ struct MainView: View {
             detailContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 860, idealWidth: 960, maxWidth: .infinity, minHeight: 600, idealHeight: 680, maxHeight: .infinity)
+        .frame(minWidth: 820, idealWidth: 960, maxWidth: .infinity, minHeight: 600, idealHeight: 680, maxHeight: .infinity)
         .background(DS.windowBackground)
         .preferredColorScheme(model.appearanceMode.colorScheme)
     }
@@ -41,7 +41,8 @@ struct MainView: View {
             Spacer()
 
             sidebarFooter
-                .padding(DS.s12)
+                .padding(.horizontal, 14)
+                .padding(.vertical, DS.s12)
         }
         .frame(maxHeight: .infinity, alignment: .topLeading)
         .background(
@@ -73,7 +74,7 @@ struct MainView: View {
 
         return Button {
             withAnimation(DS.stateAnimation) {
-                model.selectedTab = tab
+                model.requestSelectTab(tab)
             }
         } label: {
             HStack(spacing: 10) {
@@ -88,7 +89,11 @@ struct MainView: View {
 
                 Spacer()
 
-                if tab == .connection && model.activePermissionIssue != nil {
+                if model.unsavedPage == tab {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 6, height: 6)
+                } else if tab == .connection && model.activePermissionIssue != nil {
                     Circle()
                         .fill(Color.orange)
                         .frame(width: 7, height: 7)
@@ -132,7 +137,7 @@ struct MainView: View {
                     title: model.connectionPhase.badgeTitle,
                     tone: model.connectionPhase.tone
                 )
-                Spacer(minLength: 0)
+                Spacer(minLength: 4)
 
                 Button {
                     withAnimation(DS.stateAnimation) {

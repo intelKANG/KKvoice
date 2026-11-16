@@ -78,6 +78,8 @@ enum SidebarTab: String, CaseIterable, Identifiable {
     }
 }
 
+typealias SidebarPage = SidebarTab
+
 enum ConnectionPhase: Equatable {
     case disconnected
     case connecting
@@ -172,11 +174,26 @@ final class AppModel: ObservableObject {
     @Published var launchAtLogin: Bool = false
     @Published var loginItemRequiresApproval: Bool = false
     @Published var appearanceMode: AppAppearanceMode = .system
+    @Published var showMenuBarIcon: Bool = true
 
     @Published var mappings: ButtonMappings
     @Published var snapNoteShortcut: String? = nil
+    @Published var snapNoteTagName: String = SnapNoteCoordinator.defaultTagName
     @Published var hasSnapNoteToken: Bool = false
     @Published var isSnapNoteBusy: Bool = false
+
+    @Published var unsavedPage: SidebarTab? = nil
+    private var unsavedSaveHandler: (() -> Bool)? = nil
+    private var unsavedDiscardHandler: (() -> Void)? = nil
+
+    var onAppearanceChanged: ((NSAppearance?) -> Void)?
+    var onMenuBarIconPreferenceChanged: ((Bool) -> Void)?
+
+    static var currentWindowAppearance: NSAppearance? {
+        let mode = UserDefaults.standard.string(forKey: "appAppearanceMode")
+            .flatMap(AppAppearanceMode.init(rawValue:)) ?? .system
+        return mode.nsAppearance
+    }
 
     private let bridge = RemoteBridge()
     private let snapTokenStore = SnapNoteTokenStore()
@@ -185,6 +202,8 @@ final class AppModel: ObservableObject {
         didSet { isSnapNoteBusy = (snapTask != nil) }
     }
     let snapShortcutKey = "snapNoteNewShortcut"
+    let snapTagKey = "snapNoteTagName"
+    let showMenuBarIconKey = "showMenuBarIcon"
     private let mappingStore = ButtonMappingStore()
     private lazy var buttonDispatcher = ButtonActionDispatcher(
         mappings: mappings,
@@ -259,11 +278,23 @@ final class AppModel: ObservableObject {
         self.wakeSelectionIndex = keyboardSettings.wakeSelection(choices: InputShortcut.choices)
         self.inputSelectionIndex = keyboardSettings.inputSelection(choices: InputShortcut.choices)
         self.snapNoteShortcut = UserDefaults.standard.string(forKey: snapShortcutKey)
+        if let storedTag = UserDefaults.standard.string(forKey: snapTagKey),
+           SnapNoteCoordinator.validTagName(storedTag) {
+            self.snapNoteTagName = storedTag.trimmingCharacters(in: .whitespaces)
+        } else {
+            self.snapNoteTagName = SnapNoteCoordinator.defaultTagName
+        }
         self.hasSnapNoteToken = ((try? snapTokenStore.load()) ?? nil) != nil
 
         let storedAppearance = UserDefaults.standard.string(forKey: "appAppearanceMode")
             .flatMap(AppAppearanceMode.init(rawValue:)) ?? .system
         self.appearanceMode = storedAppearance
+
+        if UserDefaults.standard.object(forKey: showMenuBarIconKey) == nil {
+            self.showMenuBarIcon = true
+        } else {
+            self.showMenuBarIcon = UserDefaults.standard.bool(forKey: showMenuBarIconKey)
+        }
 
         let serviceStatus = SMAppService.mainApp.status
         self.launchAtLogin = (serviceStatus == .enabled)
@@ -284,6 +315,71 @@ final class AppModel: ObservableObject {
             refreshDevices()
         }
     }
+
+    // MARK: - Unsaved Changes Guard
+
+    func registerUnsavedChanges(
+        for page: SidebarTab,
+        hasChanges: Bool,
+        onSave: @escaping () -> Bool,
+        onDiscard: @escaping () -> Void
+    ) {
+        if hasChanges {
+            unsavedPage = page
+            unsavedSaveHandler = onSave
+            unsavedDiscardHandler = onDiscard
+        } else if unsavedPage == page {
+            unsavedPage = nil
+            unsavedSaveHandler = nil
+            unsavedDiscardHandler = nil
+        }
+    }
+
+    func clearUnsavedChanges(for page: SidebarTab) {
+        if unsavedPage == page {
+            unsavedPage = nil
+            unsavedSaveHandler = nil
+            unsavedDiscardHandler = nil
+        }
+    }
+
+    func confirmDiscardOrSaveIfNeeded() -> Bool {
+        guard unsavedPage != nil else { return true }
+        let alert = NSAlert()
+        alert.messageText = "有未保存的修改"
+        alert.informativeText = "是否在离开当前页面前保存修改？"
+        alert.addButton(withTitle: "保存")
+        alert.addButton(withTitle: "不保存")
+        alert.addButton(withTitle: "取消")
+        alert.window.appearance = Self.currentWindowAppearance
+
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            let ok = unsavedSaveHandler?() ?? true
+            if ok {
+                unsavedPage = nil
+                unsavedSaveHandler = nil
+                unsavedDiscardHandler = nil
+            }
+            return ok
+        case .alertSecondButtonReturn:
+            unsavedDiscardHandler?()
+            unsavedPage = nil
+            unsavedSaveHandler = nil
+            unsavedDiscardHandler = nil
+            return true
+        default:
+            return false
+        }
+    }
+
+    func requestSelectTab(_ tab: SidebarTab) {
+        guard tab != selectedTab else { return }
+        guard confirmDiscardOrSaveIfNeeded() else { return }
+        selectedTab = tab
+    }
+
+    // MARK: - Devices & Shortcuts
 
     func refreshDevices() {
         do {
@@ -368,16 +464,18 @@ final class AppModel: ObservableObject {
         let choices = InputShortcut.choices
         if keyboardSettings.wakeSelection(choices: choices) == choices.count + 1,
            let definition = keyboardSettings.wakeDefinition() {
-            customWakeTitle = "自定义：\(definition.encoded)"
+            customWakeTitle = "自定义：\(definition.displayString)"
         } else {
             customWakeTitle = "自定义…"
         }
         if keyboardSettings.inputSelection(choices: choices) == choices.count {
-            customInputTitle = "自定义：\(keyboardSettings.inputDefinition().encoded)"
+            customInputTitle = "自定义：\(keyboardSettings.inputDefinition().displayString)"
         } else {
             customInputTitle = "自定义…"
         }
     }
+
+    // MARK: - Appearance, Menu Bar & Login Item
 
     func setAppearanceMode(_ mode: AppAppearanceMode) {
         appearanceMode = mode
@@ -396,11 +494,17 @@ final class AppModel: ObservableObject {
     }
 
     func applyAppearance() {
+        // Apply ONLY to the app's own windows (via onAppearanceChanged), NEVER to
+        // NSApplication.shared.appearance or NSStatusBarWindow so the menu-bar
+        // template icon always tints according to the wallpaper/menu bar.
         let target = appearanceMode.nsAppearance
-        NSApplication.shared.appearance = target
-        for win in NSApplication.shared.windows {
-            win.appearance = target
-        }
+        onAppearanceChanged?(target)
+    }
+
+    func setShowMenuBarIcon(_ enabled: Bool) {
+        showMenuBarIcon = enabled
+        UserDefaults.standard.set(enabled, forKey: showMenuBarIconKey)
+        onMenuBarIconPreferenceChanged?(enabled)
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
@@ -420,6 +524,8 @@ final class AppModel: ObservableObject {
             statusText = "开机启动设置失败：\(error.localizedDescription)"
         }
     }
+
+    // MARK: - Connection & SnapNote
 
     func connect() {
         guard canConnect else { return }
@@ -506,9 +612,18 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func saveSnapNoteConfiguration(token: String, shortcutEncoded: String?) -> Bool {
+    func saveSnapNoteConfiguration(
+        token: String,
+        shortcutEncoded: String?,
+        tagName: String? = nil
+    ) -> Bool {
         guard canCaptureShortcut else {
             statusText = "断开遥控器后可修改"
+            return false
+        }
+        let resolvedTag = (tagName ?? snapNoteTagName).trimmingCharacters(in: .whitespaces)
+        guard SnapNoteCoordinator.validTagName(resolvedTag) else {
+            statusText = "标签需为 1–20 字单行文字"
             return false
         }
         do {
@@ -522,45 +637,14 @@ final class AppModel: ObservableObject {
                 return false
             }
             UserDefaults.standard.set(encoded, forKey: snapShortcutKey)
+            UserDefaults.standard.set(resolvedTag, forKey: snapTagKey)
             snapNoteShortcut = encoded
+            snapNoteTagName = resolvedTag
             statusText = "已保存"
             return true
         } catch {
             statusText = "Token 保存失败：\(error.localizedDescription)"
             return false
-        }
-    }
-
-    func configureSnapNoteModal() {
-        guard canCaptureShortcut else {
-            statusText = "断开遥控器后可修改"
-            return
-        }
-        let alert = NSAlert()
-        alert.messageText = "闪念笔记设置"
-        alert.informativeText = "输入本机接口 Token；留空表示保留已有 Token。"
-        alert.addButton(withTitle: "继续")
-        alert.addButton(withTitle: "取消")
-        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
-        field.placeholderString = "Token"
-        alert.accessoryView = field
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        do {
-            if !field.stringValue.isEmpty {
-                try snapTokenStore.save(field.stringValue)
-                hasSnapNoteToken = true
-            }
-            let previous = UserDefaults.standard.string(forKey: snapShortcutKey).flatMap(ShortcutDefinition.init(encoded:))
-            guard let selected = ShortcutPicker.prompt(previous: previous, globalWake: false),
-                  SnapNoteCoordinator.validShortcut(selected.encoded) else {
-                statusText = "新建快捷键需包含修饰键"
-                return
-            }
-            UserDefaults.standard.set(selected.encoded, forKey: snapShortcutKey)
-            snapNoteShortcut = selected.encoded
-            statusText = "已保存"
-        } catch {
-            statusText = "Token 保存失败：\(error.localizedDescription)"
         }
     }
 
@@ -572,6 +656,10 @@ final class AppModel: ObservableObject {
             statusText = "未设置闪念笔记快捷键"
             return
         }
+        let rawTag = UserDefaults.standard.string(forKey: snapTagKey) ?? snapNoteTagName
+        let tagName = SnapNoteCoordinator.validTagName(rawTag)
+            ? rawTag.trimmingCharacters(in: .whitespaces)
+            : SnapNoteCoordinator.defaultTagName
         do {
             guard let token = try snapTokenStore.load() else {
                 statusText = "未配置闪念笔记 Token"
@@ -583,7 +671,7 @@ final class AppModel: ObservableObject {
             })
             statusText = "正在新建闪念笔记…"
             snapTask = Task { @MainActor [weak self] in
-                let result = await coordinator.createAndTag(shortcut: shortcut)
+                let result = await coordinator.createAndTag(shortcut: shortcut, tagName: tagName)
                 guard let self else { return }
                 self.snapTask = nil
                 if result.succeeded {
@@ -844,6 +932,8 @@ final class AppModel: ObservableObject {
             return "需要输入监控权限"
         case "bluetooth":
             return "需要蓝牙权限"
+        case "microphone":
+            return "需要麦克风权限"
         default:
             return "需要系统权限"
         }
@@ -857,6 +947,8 @@ final class AppModel: ObservableObject {
             return "在「隐私与安全性 › 输入监控」中允许 KKvoice Remote Helper"
         case "bluetooth":
             return "在「隐私与安全性 › 蓝牙」中允许 KKvoice Remote Helper"
+        case "microphone":
+            return "在「隐私与安全性 › 麦克风」中允许 KKvoice"
         default:
             return "检查「隐私与安全性」权限设置"
         }
@@ -872,6 +964,8 @@ final class AppModel: ObservableObject {
             urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
         case "bluetooth":
             urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth"
+        case "microphone":
+            urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
         case "login-items":
             urlString = "x-apple.systempreferences:com.apple.LoginItems-Settings.extension"
         default:

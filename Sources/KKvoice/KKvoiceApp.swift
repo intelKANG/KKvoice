@@ -32,8 +32,6 @@ final class KKvoiceAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         appMenu.addItem(root)
         NSApplication.shared.mainMenu = appMenu
 
-        installMenuBarItem()
-
         let hostingController = NSHostingController(rootView: MainView(model: model))
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 960, height: 680),
@@ -43,7 +41,7 @@ final class KKvoiceAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         )
         window.contentViewController = hostingController
         window.setContentSize(NSSize(width: 960, height: 680))
-        window.minSize = NSSize(width: 860, height: 600)
+        window.minSize = NSSize(width: 820, height: 600)
         window.title = "KKvoice"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
@@ -52,8 +50,22 @@ final class KKvoiceAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         window.delegate = self
         window.center()
 
-        window.makeKeyAndOrderFront(nil)
+        model.onAppearanceChanged = { [weak self] appearance in
+            self?.window?.appearance = appearance
+            // Keep status item button & status bar window appearance nil so macOS
+            // automatically tints the template icon based on the menu bar background.
+            self?.statusItem?.button?.appearance = nil
+            self?.statusItem?.button?.contentTintColor = nil
+            self?.statusItem?.button?.window?.appearance = nil
+        }
+        model.onMenuBarIconPreferenceChanged = { [weak self] enabled in
+            self?.updateMenuBarItem(enabled: enabled)
+        }
+
+        updateMenuBarItem(enabled: model.showMenuBarIcon)
         model.applyAppearance()
+
+        window.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
         model.connect()
     }
@@ -69,33 +81,75 @@ final class KKvoiceAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             ?? NSImage(contentsOf: repoFallback)
             ?? NSImage(size: NSSize(width: 18, height: 18))
 
-        let canvasSize = NSSize(width: 18, height: 18)
-        let image = NSImage(size: canvasSize, flipped: false) { rect in
-            let srcSize = source.size
-            let scale = (srcSize.width > 0 && srcSize.height > 0)
-                ? min(rect.width / srcSize.width, rect.height / srcSize.height)
-                : 1.0
-            let drawW = srcSize.width * scale
-            let drawH = srcSize.height * scale
-            let drawRect = NSRect(
-                x: rect.midX - drawW / 2,
-                y: rect.midY - drawH / 2,
-                width: drawW,
-                height: drawH
-            )
-            source.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 1.0)
-            NSColor.black.setFill()
-            rect.fill(using: .sourceIn)
-            return true
+        let ptSize = NSSize(width: 18, height: 18)
+        let pxWide = 36
+        let pxHigh = 36
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pxWide,
+            pixelsHigh: pxHigh,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            source.size = ptSize
+            source.isTemplate = true
+            return source
         }
+        rep.size = ptSize
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        let rect = NSRect(origin: .zero, size: ptSize)
+        let srcSize = source.size
+        let scale = (srcSize.width > 0 && srcSize.height > 0)
+            ? min(rect.width / srcSize.width, rect.height / srcSize.height)
+            : 1.0
+        let drawW = srcSize.width * scale
+        let drawH = srcSize.height * scale
+        let drawRect = NSRect(
+            x: rect.midX - drawW / 2,
+            y: rect.midY - drawH / 2,
+            width: drawW,
+            height: drawH
+        )
+        source.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: 1.0)
+        NSColor.black.setFill()
+        rect.fill(using: .sourceIn)
+        NSGraphicsContext.restoreGraphicsState()
+
+        let image = NSImage(size: ptSize)
+        image.addRepresentation(rep)
         image.isTemplate = true
         return image
+    }
+
+    private func updateMenuBarItem(enabled: Bool) {
+        if enabled {
+            if statusItem == nil {
+                installMenuBarItem()
+            }
+        } else {
+            if let item = statusItem {
+                NSStatusBar.system.removeStatusItem(item)
+                statusItem = nil
+            }
+            if NSApplication.shared.activationPolicy() != .regular {
+                NSApplication.shared.setActivationPolicy(.regular)
+            }
+        }
     }
 
     private func installMenuBarItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let image = Self.makeMenuBarTemplateImage()
         item.button?.image = image
+        item.button?.appearance = nil
+        item.button?.contentTintColor = nil
         item.button?.toolTip = "KKvoice"
         item.button?.target = self
         item.button?.action = #selector(statusItemClicked(_:))
@@ -125,15 +179,28 @@ final class KKvoiceAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
     @objc private func showMainWindow() {
         NSApplication.shared.setActivationPolicy(.regular)
+        window.appearance = model.appearanceMode.nsAppearance
         window.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard sender === window else { return true }
+        guard model.confirmDiscardOrSaveIfNeeded() else { return false }
         sender.orderOut(nil)
-        NSApplication.shared.setActivationPolicy(.accessory)
+        if model.showMenuBarIcon {
+            NSApplication.shared.setActivationPolicy(.accessory)
+        } else {
+            NSApplication.shared.setActivationPolicy(.regular)
+        }
         return false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            showMainWindow()
+        }
+        return true
     }
 
     func applicationWillTerminate(_ notification: Notification) {

@@ -39,15 +39,19 @@ public actor SnapNoteCoordinator {
         self.nowMs = nowMs; self.delay = delay; self.overallTimeoutNanoseconds = overallTimeoutNanoseconds
     }
 
+    public static let defaultTagName = "闪念"
+
     /// Run on a single coordinator instance. Do not clear/replace its configuration while running;
     /// cancellation must also cancel the native helper's pending delayed "." action.
-    public func createAndTag(shortcut: String) async -> SnapNoteOutcome {
+    public func createAndTag(shortcut: String, tagName: String = SnapNoteCoordinator.defaultTagName) async -> SnapNoteOutcome {
         func outcome(_ id: UUID? = nil, _ error: SnapNoteError? = nil, _ phase: SnapNotePhase = .preflight,
                      _ note: Bool = false, _ tag: Bool = false) -> SnapNoteOutcome {
             SnapNoteOutcome(noteID: id, error: error, phase: phase, noteMayExist: note, tagMayHaveBeenWritten: tag)
         }
         guard !inFlight else { return outcome(nil, .busy) }
         guard Self.validShortcut(shortcut) else { return outcome(nil, .invalidShortcut) }
+        guard Self.validTagName(tagName) else { return outcome(nil, .invalidTag) }
+        let normalizedTag = tagName.trimmingCharacters(in: .whitespaces)
         let started = nowMs()
         if let last = lastCompletedMs, started >= last && started - last < 2500 { return outcome(nil, .busy) }
         inFlight = true
@@ -99,14 +103,14 @@ public actor SnapNoteCoordinator {
             guard let record = candidate else { throw SnapNoteError.candidateNotFound }
             candidateID = record.id
             try Task.checkCancellation()
-            if !record.tagNames.contains("闪念") {
+            if !record.tagNames.contains(normalizedTag) {
                 phase = .tagging
                 tagMayHaveBeenWritten = true
-                try await Self.before(deadline) { try await client.addFlashTag(noteID: record.id) }
+                try await Self.before(deadline) { try await client.addFlashTag(noteID: record.id, tagName: normalizedTag) }
             }
             phase = .verifying
             let verification = try await Self.before(deadline) { try await client.recent() }
-            guard let confirmed = verification[record.id], confirmed.tagNames.contains("闪念") else { throw SnapNoteError.tagUnverified }
+            guard let confirmed = verification[record.id], confirmed.tagNames.contains(normalizedTag) else { throw SnapNoteError.tagUnverified }
             return outcome(record.id, nil, phase, true, tagMayHaveBeenWritten)
         } catch is CancellationError {
             return outcome(candidateID, .cancelled, phase, noteMayExist, tagMayHaveBeenWritten)
@@ -145,5 +149,12 @@ public actor SnapNoteCoordinator {
         let keys = Set((1...12).map { "F\($0)" } + Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789").map(String.init)
             + ["Space", "Return", "Escape", "Tab", "Backspace", "ForwardDelete", "Home", "End", "PageUp", "PageDown", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"])
         return keys.contains(parts[2])
+    }
+
+    public static func validTagName(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, trimmed.count <= 20 else { return false }
+        return !raw.contains("\n") && !raw.contains("\r") &&
+            raw.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) }
     }
 }

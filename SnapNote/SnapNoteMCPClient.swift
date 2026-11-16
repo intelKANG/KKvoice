@@ -26,9 +26,9 @@ public actor SnapNoteMCPClient: SnapNoteService {
         return try Self.parseRecent(result)
     }
 
-    public func addFlashTag(noteID: UUID) async throws {
+    public func addFlashTag(noteID: UUID, tagName: String = "闪念") async throws {
         // Never retry a write: transport failure or HTTP/session failure may occur after a side effect.
-        _ = try await tool("snapnote.memo_add_tags", arguments: ["note_uuids":[noteID.uuidString.lowercased()], "tag_path":"闪念"], readOnly: false)
+        _ = try await tool("snapnote.memo_add_tags", arguments: ["note_uuids":[noteID.uuidString.lowercased()], "tag_path":tagName], readOnly: false)
     }
 
     private func initializeIfNeeded() async throws {
