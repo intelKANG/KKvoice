@@ -195,13 +195,13 @@ func waitFor(_ test: @Sendable () -> Bool) async throws {
         let keychain = MockKeychain()
         let store = SnapNoteTokenStore(backend:keychain)
         let initialToken = try store.load()
-        expect(initialToken == nil, "empty keychain")
+        expect(initialToken == nil && !store.exists(), "empty keychain")
         try store.save("Bearer mock-secret")
         let savedToken = try store.load()
-        expect(savedToken == "mock-secret", "normalized keychain round trip")
+        expect(savedToken == "mock-secret" && store.exists(), "normalized keychain round trip")
         try store.delete()
         let deletedToken = try store.load()
-        expect(deletedToken == nil, "keychain deletion")
+        expect(deletedToken == nil && !store.exists(), "keychain deletion")
         do { try store.save("bad\nsecret"); fatalError("invalid keychain token accepted") }
         catch SnapNoteError.invalidToken {}
 

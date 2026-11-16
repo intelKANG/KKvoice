@@ -303,7 +303,7 @@ final class AppModel: ObservableObject {
         } else {
             self.snapNoteTagName = SnapNoteCoordinator.defaultTagName
         }
-        self.hasSnapNoteToken = ((try? snapTokenStore.load()) ?? nil) != nil
+        self.hasSnapNoteToken = snapTokenStore.exists()
 
         let storedAppearance = UserDefaults.standard.string(forKey: "appAppearanceMode")
             .flatMap(AppAppearanceMode.init(rawValue:)) ?? .system

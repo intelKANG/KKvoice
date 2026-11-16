@@ -8,9 +8,16 @@ public enum SnapNoteKeychainError: Error, Equatable {
 
 /// Injectable for tests. Implementations must never record the values supplied to them.
 public protocol SnapNoteKeychainBackend: Sendable {
+    func exists(service: String, account: String) -> Bool
     func read(service: String, account: String) throws -> Data?
     func write(service: String, account: String, value: Data) throws
     func delete(service: String, account: String) throws
+}
+
+public extension SnapNoteKeychainBackend {
+    func exists(service: String, account: String) -> Bool {
+        ((try? read(service: service, account: account)) ?? nil) != nil
+    }
 }
 
 public struct SnapNoteSystemKeychain: SnapNoteKeychainBackend {
@@ -20,6 +27,13 @@ public struct SnapNoteSystemKeychain: SnapNoteKeychainBackend {
          kSecAttrService as String: service,
          kSecAttrAccount as String: account,
          kSecAttrSynchronizable as String: kCFBooleanFalse as Any]
+    }
+    public func exists(service: String, account: String) -> Bool {
+        var q = query(service, account)
+        q[kSecMatchLimit as String] = kSecMatchLimitOne
+        q[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUISkip
+        let status = SecItemCopyMatching(q as CFDictionary, nil)
+        return status == errSecSuccess || status == errSecInteractionNotAllowed
     }
     public func read(service: String, account: String) throws -> Data? {
         var q = query(service, account)
@@ -62,6 +76,9 @@ public struct SnapNoteTokenStore: Sendable {
         let value = try SnapNoteToken.normalize(raw)
         guard let data = value.data(using: .utf8) else { throw SnapNoteKeychainError.corruptData }
         try backend.write(service: Self.service, account: Self.account, value: data)
+    }
+    public func exists() -> Bool {
+        backend.exists(service: Self.service, account: Self.account)
     }
     public func load() throws -> String? {
         guard let data = try backend.read(service: Self.service, account: Self.account) else { return nil }
