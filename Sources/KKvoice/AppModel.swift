@@ -282,6 +282,20 @@ final class AppModel: ObservableObject {
     var isKKvoiceMicAvailable: Bool {
         availableDevices.contains(where: { $0.uid == DriverInstaller.deviceUID })
     }
+    var isRemoteConnected: Bool {
+        voiceChannelReady || hidConnected
+    }
+    var shouldShowPairingGuide: Bool {
+        if !isRemoteConnected {
+            return true
+        }
+        switch connectionPhase {
+        case .disconnected, .connecting:
+            return true
+        default:
+            return false
+        }
+    }
 
     var wakeKeyTitles: [String] {
         ["不启用"] + InputShortcut.choices.map(\.name) + [customWakeTitle]
@@ -1096,6 +1110,12 @@ final class AppModel: ObservableObject {
             urlString = "x-apple.systempreferences:com.apple.preference.security"
         }
         if let url = URL(string: urlString) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    func openBluetoothSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.BluetoothSettings") {
             NSWorkspace.shared.open(url)
         }
     }

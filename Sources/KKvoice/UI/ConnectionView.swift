@@ -300,7 +300,7 @@ struct ConnectionView: View {
 
     private var statusCard: some View {
         Card(padding: DS.s16) {
-            VStack(alignment: .leading, spacing: DS.s12) {
+            VStack(alignment: .leading, spacing: 10) {
                 SectionHeader("状态", systemImage: "waveform.path.ecg")
 
                 if let permission = model.activePermissionIssue {
@@ -327,8 +327,44 @@ struct ConnectionView: View {
                         tone: audioSourceTone
                     )
                 }
+
+                if model.shouldShowPairingGuide {
+                    pairingGuideBar
+                }
             }
         }
+    }
+
+    private var pairingGuideBar: some View {
+        HStack(alignment: .center, spacing: DS.s8) {
+            Image(systemName: "dot.radiowaves.left.and.right")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text("首次配对：同时长按「← + 🏠」3 秒至指示灯闪烁，在系统蓝牙中连接 Chromecast Remote")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.88)
+
+            Spacer(minLength: DS.s8)
+
+            Button("蓝牙设置") {
+                model.openBluetoothSettings()
+            }
+            .controlSize(.small)
+            .help("打开系统蓝牙设置")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: DS.controlRadius, style: .continuous)
+                .fill(DS.subtleFill)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.controlRadius, style: .continuous)
+                .strokeBorder(DS.border, lineWidth: 1)
+        )
     }
 
     private var audioSourceTone: StatusTone {
@@ -375,7 +411,7 @@ struct ConnectionView: View {
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(DS.s12)
+        .padding(10)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: DS.controlRadius, style: .continuous)
@@ -451,7 +487,7 @@ struct ConnectionView: View {
 
     private var voiceSettingsCard: some View {
         Card(padding: DS.s16) {
-            VStack(alignment: .leading, spacing: DS.s12) {
+            VStack(alignment: .leading, spacing: 9) {
                 SectionHeader("语音设置", systemImage: "slider.horizontal.3") {
                     if model.isControlsLocked {
                         HStack(spacing: 4) {
