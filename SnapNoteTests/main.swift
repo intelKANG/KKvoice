@@ -121,6 +121,22 @@ func waitFor(_ test: @Sendable () -> Bool) async throws {
         expect(!SnapNoteCoordinator.validTagName("   "), "whitespace tag rejected")
         expect(!SnapNoteCoordinator.validTagName("换行\n标签"), "multiline tag rejected")
         expect(!SnapNoteCoordinator.validTagName(String(repeating: "字", count: 21)), "overlong tag rejected")
+
+        // Custom MCP endpoint & port normalization tests
+        let defaultEndpoint = try SnapNoteLocalTransport.normalizeEndpoint(SnapNoteLocalTransport.defaultEndpointString)
+        expect(defaultEndpoint.absoluteString == "http://127.0.0.1:31090/snapnote/data-source/mcp", "default MCP endpoint preserved")
+        let hostPortOnly = try SnapNoteLocalTransport.normalizeEndpoint("http://10.10.10.22:31090")
+        expect(hostPortOnly.absoluteString == "http://10.10.10.22:31090/snapnote/data-source/mcp", "host:port auto-completes MCP path")
+        let trailingSlash = try SnapNoteLocalTransport.normalizeEndpoint("https://10.10.10.22:32000/snapnote/data-source/mcp/")
+        expect(trailingSlash.absoluteString == "https://10.10.10.22:32000/snapnote/data-source/mcp", "trailing slash trimmed")
+        expect(SnapNoteLocalTransport.extractPort(from: "http://10.10.10.22:31090/snapnote/data-source/mcp") == 31090, "extract port from endpoint")
+        expect(SnapNoteLocalTransport.replacingPort(in: "http://10.10.10.22:31090/snapnote/data-source/mcp", with: 32100) == "http://10.10.10.22:32100/snapnote/data-source/mcp", "replace port in endpoint")
+        expect(SnapNoteLocalTransport.replacingPort(in: "http://127.0.0.1:31090/snapnote/data-source/mcp", with: 0) == nil, "port 0 rejected")
+        expect(SnapNoteLocalTransport.replacingPort(in: "http://127.0.0.1:31090/snapnote/data-source/mcp", with: 70000) == nil, "port >65535 rejected")
+        expect(!SnapNoteLocalTransport.validEndpoint("ftp://127.0.0.1:31090/snapnote/data-source/mcp"), "non-http scheme rejected")
+        expect(!SnapNoteLocalTransport.validEndpoint("http://127.0.0.1:99999/snapnote/data-source/mcp"), "out-of-range port rejected")
+        expect(!SnapNoteLocalTransport.validEndpoint(""), "empty endpoint rejected")
+
         do { _ = try SnapNoteMCPClient(token:"bad\nsecret", transport:MockHTTP()); fatalError("invalid token accepted") }
         catch SnapNoteError.invalidToken {}
 

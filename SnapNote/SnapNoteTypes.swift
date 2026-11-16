@@ -1,7 +1,7 @@
 import Foundation
 
 public enum SnapNoteError: Error, Equatable, Sendable {
-    case invalidToken, notConfigured, invalidShortcut, invalidTag, recording, busy
+    case invalidToken, invalidEndpoint, notConfigured, invalidShortcut, invalidTag, recording, busy
     case unavailable, unauthorized, timeout, protocolError, sessionExpired
     case operationFailed, unstableBaseline, multipleCandidates, candidateRejected
     case candidateNotFound, tagUnverified, cancelled

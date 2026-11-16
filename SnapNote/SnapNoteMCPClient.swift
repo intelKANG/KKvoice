@@ -16,6 +16,21 @@ public actor SnapNoteMCPClient: SnapNoteService {
         self.token = normalized; self.transport = transport; self.timeout = timeout
     }
 
+    public init(token raw: String, endpoint: URL, timeout: TimeInterval = 1.8) throws {
+        let normalized = try SnapNoteToken.normalize(raw)
+        self.token = normalized
+        self.transport = SnapNoteLocalTransport(endpoint: endpoint)
+        self.timeout = timeout
+    }
+
+    public init(token raw: String, endpointString: String, timeout: TimeInterval = 1.8) throws {
+        let normalized = try SnapNoteToken.normalize(raw)
+        let url = try SnapNoteLocalTransport.normalizeEndpoint(endpointString)
+        self.token = normalized
+        self.transport = SnapNoteLocalTransport(endpoint: url)
+        self.timeout = timeout
+    }
+
     public func verifyService() async throws {
         let result = try await tool("snapnote.service_profile", arguments: [:], readOnly: true)
         guard result["service_key"] as? String == "snapnote.data_source" else { throw SnapNoteError.protocolError }

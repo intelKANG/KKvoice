@@ -109,6 +109,14 @@ static void Log(NSString *message) {
 - (void)sendSnapNoteGlobalNewNoteShortcutWithActionId:(NSString *)actionId shortcut:(NSString *)shortcut attempt:(NSUInteger)attempt;
 - (void)postSnapNoteGlobalNewNoteShortcut:(NSString *)shortcut;
 - (void)completeSnapNoteNewNoteActionWithActionId:(NSString *)actionId;
+- (void)prepareAppleNotesAndCreateNewNoteWithActionId:(NSString *)actionId tag:(NSString *)tag;
+- (void)waitForAppleNotesFrontmostAndSendNewNoteWithActionId:(NSString *)effectiveActionId
+                                            originalActionId:(NSString *)originalActionId
+                                                         tag:(NSString *)tag
+                                                     attempt:(NSUInteger)attempt;
+- (void)completeAppleNotesNewNoteWithActionId:(NSString *)effectiveActionId
+                             originalActionId:(NSString *)originalActionId
+                                          tag:(NSString *)tag;
 - (void)postKeyCode:(uint16_t)keyCode keyDown:(BOOL)down flags:(CGEventFlags)flags;
 - (BOOL)resolvePrintableASCIICharacter:(UniChar)character
                                 layout:(const UCKeyboardLayout *)layout
@@ -304,6 +312,10 @@ static CGEventRef KeyboardEventCallback(
         if ([target isEqualToString:@"snapnoteNewNote"]) {
             NSString *actionId = [message[@"actionId"] isKindOfClass:[NSString class]] ? message[@"actionId"] : @"";
             [self prepareSnapNoteAndTriggerGlobalNewNote:actionId shortcut:message[@"shortcut"]];
+        } else if ([target isEqualToString:@"appleNotesNewNote"]) {
+            NSString *actionId = [message[@"actionId"] isKindOfClass:[NSString class]] ? message[@"actionId"] : @"";
+            NSString *tag = [message[@"tag"] isKindOfClass:[NSString class]] ? message[@"tag"] : @"";
+            [self prepareAppleNotesAndCreateNewNoteWithActionId:actionId tag:tag];
         } else if ([target isEqualToString:@"typeTextAndEnter"]) {
             NSString *text = message[@"text"];
             [self postStringAndEnter:[text isKindOfClass:[NSString class]] ? text : @""];
@@ -1834,6 +1846,140 @@ static CGEventRef KeyboardEventCallback(
         return;
     }
     Emit(@"action_done", @{@"actionId": actionId, @"message": @"已输入句点；等待本机接口核对新笔记。"});
+}
+
+- (void)prepareAppleNotesAndCreateNewNoteWithActionId:(NSString *)actionId tag:(NSString *)tag {
+    if (self.snapnotePendingActionId) {
+        NSMutableDictionary *payload = [@{@"message": @"已有笔记动作正在执行。"} mutableCopy];
+        if (actionId.length > 0) payload[@"actionId"] = actionId;
+        Emit(@"action_error", payload);
+        return;
+    }
+    NSString *effectiveActionId = actionId.length > 0 ? actionId : [NSUUID UUID].UUIDString.lowercaseString;
+    self.snapnotePendingActionId = effectiveActionId;
+    self.snapnoteShortcutSent = NO;
+
+    NSWorkspace *workspace = [NSWorkspace sharedWorkspace];
+    NSURL *appURL = [workspace URLForApplicationWithBundleIdentifier:@"com.apple.Notes"];
+    if (!appURL) {
+        NSURL *fallbackURL = [NSURL fileURLWithPath:@"/System/Applications/Notes.app" isDirectory:YES];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:fallbackURL.path]) {
+            appURL = fallbackURL;
+        }
+    }
+    if (!appURL) {
+        self.snapnotePendingActionId = nil;
+        NSMutableDictionary *payload = [@{@"message": @"找不到系统备忘录 App。"} mutableCopy];
+        if (actionId.length > 0) payload[@"actionId"] = actionId;
+        Emit(@"action_error", payload);
+        return;
+    }
+
+    NSWorkspaceOpenConfiguration *configuration = [NSWorkspaceOpenConfiguration configuration];
+    configuration.activates = YES;
+    [workspace openApplicationAtURL:appURL configuration:configuration completionHandler:^(NSRunningApplication *application, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.stopped || ![self.snapnotePendingActionId isEqualToString:effectiveActionId]) return;
+            if (error || !application) {
+                self.snapnotePendingActionId = nil;
+                NSMutableDictionary *payload = [@{@"message": @"无法启动系统备忘录 App。"} mutableCopy];
+                if (actionId.length > 0) payload[@"actionId"] = actionId;
+                Emit(@"action_error", payload);
+                return;
+            }
+            [self waitForAppleNotesFrontmostAndSendNewNoteWithActionId:effectiveActionId
+                                                      originalActionId:actionId
+                                                                   tag:tag
+                                                               attempt:0];
+        });
+    }];
+}
+
+- (void)waitForAppleNotesFrontmostAndSendNewNoteWithActionId:(NSString *)effectiveActionId
+                                            originalActionId:(NSString *)originalActionId
+                                                         tag:(NSString *)tag
+                                                     attempt:(NSUInteger)attempt {
+    if (self.stopped || ![self.snapnotePendingActionId isEqualToString:effectiveActionId]) return;
+    NSRunningApplication *notesApp = [NSRunningApplication runningApplicationsWithBundleIdentifier:@"com.apple.Notes"].firstObject;
+    NSRunningApplication *frontmost = [NSWorkspace sharedWorkspace].frontmostApplication;
+    BOOL isFrontmost = notesApp && notesApp.isFinishedLaunching && [frontmost.bundleIdentifier isEqualToString:@"com.apple.Notes"];
+    if (!isFrontmost) {
+        if (notesApp && (attempt == 0 || attempt == 5)) {
+            [notesApp activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+        }
+        if (attempt < 20) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [self waitForAppleNotesFrontmostAndSendNewNoteWithActionId:effectiveActionId
+                                                          originalActionId:originalActionId
+                                                                       tag:tag
+                                                                   attempt:attempt + 1];
+            });
+        } else {
+            self.snapnotePendingActionId = nil;
+            NSMutableDictionary *payload = [@{@"message": @"备忘录未切到前台，未发送新建快捷键。"} mutableCopy];
+            if (originalActionId.length > 0) payload[@"actionId"] = originalActionId;
+            Emit(@"action_error", payload);
+        }
+        return;
+    }
+
+    if (self.stopped || ![self.snapnotePendingActionId isEqualToString:effectiveActionId]) return;
+    self.snapnoteShortcutSent = YES;
+    [self postSnapNoteGlobalNewNoteShortcut:@"shortcut:command:N"];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self completeAppleNotesNewNoteWithActionId:effectiveActionId originalActionId:originalActionId tag:tag];
+    });
+}
+
+- (void)completeAppleNotesNewNoteWithActionId:(NSString *)effectiveActionId
+                             originalActionId:(NSString *)originalActionId
+                                          tag:(NSString *)tag {
+    if (self.stopped || ![self.snapnotePendingActionId isEqualToString:effectiveActionId]) return;
+    self.snapnotePendingActionId = nil;
+    self.snapnoteShortcutSent = NO;
+
+    NSRunningApplication *frontmost = [NSWorkspace sharedWorkspace].frontmostApplication;
+    if (![frontmost.bundleIdentifier isEqualToString:@"com.apple.Notes"]) {
+        NSMutableDictionary *payload = [@{@"message": @"备忘录没有保持在前台，未写入标签。"} mutableCopy];
+        if (originalActionId.length > 0) payload[@"actionId"] = originalActionId;
+        Emit(@"action_error", payload);
+        return;
+    }
+
+    NSString *cleanTag = [tag isKindOfClass:[NSString class]]
+        ? [tag stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]]
+        : @"";
+    while ([cleanTag hasPrefix:@"#"]) {
+        cleanTag = [[cleanTag substringFromIndex:1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    }
+
+    if (cleanTag.length > 0) {
+        NSString *tagText = [NSString stringWithFormat:@"#%@ ", cleanTag];
+        NSUInteger offset = 0;
+        while (offset < tagText.length) {
+            NSUInteger chunkLength = MIN((NSUInteger)16, tagText.length - offset);
+            if (offset + chunkLength < tagText.length) {
+                unichar last = [tagText characterAtIndex:offset + chunkLength - 1];
+                unichar next = [tagText characterAtIndex:offset + chunkLength];
+                BOOL splitsSurrogatePair = last >= 0xD800 && last <= 0xDBFF && next >= 0xDC00 && next <= 0xDFFF;
+                if (splitsSurrogatePair) chunkLength--;
+            }
+            NSString *chunk = [tagText substringWithRange:NSMakeRange(offset, chunkLength)];
+            if (![self postUnicodeChunk:chunk]) {
+                NSMutableDictionary *payload = [@{@"message": @"无法在备忘录中输入标签。"} mutableCopy];
+                if (originalActionId.length > 0) payload[@"actionId"] = originalActionId;
+                Emit(@"action_error", payload);
+                return;
+            }
+            offset += chunkLength;
+        }
+        usleep(30000);
+        [self postKeyCode:0x24 modifiers:@[]];
+    }
+
+    NSMutableDictionary *payload = [@{@"message": @"已新建备忘录并添加标签。"} mutableCopy];
+    if (originalActionId.length > 0) payload[@"actionId"] = originalActionId;
+    Emit(@"action_done", payload);
 }
 
 - (void)shutdown {
