@@ -131,6 +131,9 @@ static void Log(NSString *message) {
 - (void)pollOrScanForRemote;
 - (void)startDiscoveryTimer;
 - (void)stopDiscoveryTimer;
+- (BOOL)refreshHIDDevicePresence;
+- (void)releasePeripheralForSystemPairingIfNeeded;
+- (void)scheduleHIDPresenceGuardForPeripheral:(CBPeripheral *)peripheral;
 - (CBPeripheral *)retrieveKnownChromecastPeripheral;
 - (void)rememberChromecastPeripheral:(CBPeripheral *)peripheral;
 - (void)connectPeripheral:(CBPeripheral *)peripheral;
@@ -154,15 +157,7 @@ static void HIDDeviceMatchedCallback(void *context, IOReturn result, void *sende
             dispatch_async(dispatch_get_main_queue(), ^{
                 helper.hidDevicePresent = YES;
                 if (!helper.peripheral && !helper.stopped && helper.central.state == CBManagerStatePoweredOn) {
-                    CBPeripheral *known = [helper retrieveKnownChromecastPeripheral];
-                    if (known) {
-                        [helper stopDiscoveryTimer];
-                        if (helper.central.isScanning) [helper.central stopScan];
-                        helper.scanningEmitted = NO;
-                        [helper connectPeripheral:known];
-                    } else {
-                        [helper startDiscoveryWindowWithDuration:15.0];
-                    }
+                    [helper startDiscoveryWindowWithDuration:15.0];
                 }
             });
         }
@@ -170,13 +165,15 @@ static void HIDDeviceMatchedCallback(void *context, IOReturn result, void *sende
 }
 
 static void HIDDeviceRemovedCallback(void *context, IOReturn result, void *sender, IOHIDDeviceRef device) {
+    Emit(@"hid_disconnected", @{});
     if (context) {
         RemoteHelper *helper = (__bridge RemoteHelper *)context;
         dispatch_async(dispatch_get_main_queue(), ^{
-            helper.hidDevicePresent = NO;
+            if (![helper refreshHIDDevicePresence]) {
+                [helper releasePeripheralForSystemPairingIfNeeded];
+            }
         });
     }
-    Emit(@"hid_disconnected", @{});
 }
 
 static CGEventRef KeyboardEventCallback(
@@ -413,6 +410,12 @@ static CGEventRef KeyboardEventCallback(
     if (result == kIOReturnSuccess) {
         self.hidManager = manager;
         Emit(@"hid_listening", @{});
+        if ([self refreshHIDDevicePresence]) {
+            Emit(@"hid_connected", @{@"vendorId": @(kRemoteVendorID), @"productId": @(kRemoteProductID)});
+            if (self.central.state == CBManagerStatePoweredOn && !self.peripheral) {
+                [self startDiscoveryWindowWithDuration:15.0];
+            }
+        }
     } else {
         Log([NSString stringWithFormat:@"IOHIDManagerOpen failed: 0x%08X", (uint32_t)result]);
         Emit(@"permission_required", @{@"permission": @"input-monitoring"});
@@ -427,8 +430,45 @@ static CGEventRef KeyboardEventCallback(
     IOHIDManagerClose(self.hidManager, kIOHIDOptionsTypeNone);
     CFRelease(self.hidManager);
     self.hidManager = NULL;
+    self.hidDevicePresent = NO;
     self.lastUsage = nil;
     Emit(@"hid_disabled", @{});
+}
+
+- (BOOL)refreshHIDDevicePresence {
+    if (!self.hidManager) {
+        self.hidDevicePresent = NO;
+        return NO;
+    }
+    CFSetRef devices = IOHIDManagerCopyDevices(self.hidManager);
+    CFIndex count = devices ? CFSetGetCount(devices) : 0;
+    if (devices) CFRelease(devices);
+    self.hidDevicePresent = (count > 0);
+    return self.hidDevicePresent;
+}
+
+- (void)releasePeripheralForSystemPairingIfNeeded {
+    if (self.central.isScanning) {
+        [self.central stopScan];
+    }
+    if (self.peripheral) {
+        CBPeripheral *current = self.peripheral;
+        [self resetATVVState];
+        self.peripheral = nil;
+        [self.central cancelPeripheralConnection:current];
+        Emit(@"ble_disconnected", @{@"message": @""});
+    }
+}
+
+- (void)scheduleHIDPresenceGuardForPeripheral:(CBPeripheral *)peripheral {
+    __weak RemoteHelper *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        RemoteHelper *helper = weakSelf;
+        if (!helper || helper.stopped || helper.peripheral != peripheral) return;
+        if (![helper refreshHIDDevicePresence]) {
+            [helper releasePeripheralForSystemPairingIfNeeded];
+        }
+    });
 }
 
 - (void)handleReportID:(uint32_t)reportID data:(NSData *)data {
@@ -559,9 +599,19 @@ static CGEventRef KeyboardEventCallback(
 
 - (void)pollOrScanForRemote {
     if (self.stopped || self.central.state != CBManagerStatePoweredOn || self.peripheral) return;
+    if (![self refreshHIDDevicePresence]) {
+        if (self.central.isScanning) [self.central stopScan];
+        if (!self.scanningEmitted) {
+            self.scanningEmitted = YES;
+            Emit(@"scanning", @{});
+        }
+        return;
+    }
+    CBUUID *atvvService = [CBUUID UUIDWithString:ATVVServiceUUID];
+    CBUUID *hidService = [CBUUID UUIDWithString:@"1812"];
     NSArray<CBUUID *> *queryServices = @[
-        [CBUUID UUIDWithString:ATVVServiceUUID],
-        [CBUUID UUIDWithString:@"1812"],
+        atvvService,
+        hidService,
         [CBUUID UUIDWithString:@"180A"],
         [CBUUID UUIDWithString:@"180F"],
         [CBUUID UUIDWithString:@"1800"]
@@ -576,7 +626,7 @@ static CGEventRef KeyboardEventCallback(
     }
     if (!matched) {
         CBPeripheral *known = [self retrieveKnownChromecastPeripheral];
-        if (known && (known.state == CBPeripheralStateConnected || self.hidDevicePresent)) {
+        if (known) {
             matched = known;
         }
     }
@@ -588,7 +638,7 @@ static CGEventRef KeyboardEventCallback(
         return;
     }
     if (!self.central.isScanning) {
-        [self.central scanForPeripheralsWithServices:nil
+        [self.central scanForPeripheralsWithServices:@[atvvService, hidService]
                                              options:@{CBCentralManagerScanOptionAllowDuplicatesKey: @NO}];
     }
     if (!self.scanningEmitted) {
@@ -603,6 +653,10 @@ static CGEventRef KeyboardEventCallback(
 
 - (void)centralManager:(CBCentralManager *)central didDiscoverPeripheral:(CBPeripheral *)peripheral
      advertisementData:(NSDictionary<NSString *,id> *)advertisementData RSSI:(NSNumber *)RSSI {
+    if (![self refreshHIDDevicePresence]) {
+        [central stopScan];
+        return;
+    }
     NSString *advertisedName = [advertisementData[CBAdvertisementDataLocalNameKey] isKindOfClass:[NSString class]]
         ? advertisementData[CBAdvertisementDataLocalNameKey] : @"";
     BOOL matchesName = [self isChromecastRemote:peripheral] ||
@@ -645,6 +699,10 @@ static CGEventRef KeyboardEventCallback(
 }
 
 - (void)connectPeripheral:(CBPeripheral *)peripheral {
+    if (![self refreshHIDDevicePresence]) {
+        [self releasePeripheralForSystemPairingIfNeeded];
+        return;
+    }
     if (self.peripheral == peripheral) return;
     [self stopDiscoveryTimer];
     self.scanningEmitted = NO;
@@ -657,6 +715,7 @@ static CGEventRef KeyboardEventCallback(
         self.connectAttemptGeneration++;
         self.scanRetryCount = 0;
         [self rememberChromecastPeripheral:peripheral];
+        [self scheduleHIDPresenceGuardForPeripheral:peripheral];
         Emit(@"ble_connected", @{@"name": peripheral.name ?: @"Chromecast Voice Remote"});
         [peripheral discoverServices:@[[CBUUID UUIDWithString:ATVVServiceUUID]]];
         return;
@@ -664,6 +723,7 @@ static CGEventRef KeyboardEventCallback(
     self.connectAttemptPending = YES;
     NSUInteger generation = ++self.connectAttemptGeneration;
     [self.central connectPeripheral:peripheral options:nil];
+    [self scheduleHIDPresenceGuardForPeripheral:peripheral];
     Emit(@"connecting", @{@"name": peripheral.name ?: @"Chromecast Voice Remote"});
     __weak RemoteHelper *weakSelf = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -681,10 +741,15 @@ static CGEventRef KeyboardEventCallback(
 
 - (void)centralManager:(CBCentralManager *)central didConnectPeripheral:(CBPeripheral *)peripheral {
     if (peripheral != self.peripheral || self.stopped) return;
+    if (![self refreshHIDDevicePresence]) {
+        [self releasePeripheralForSystemPairingIfNeeded];
+        return;
+    }
     self.connectAttemptPending = NO;
     self.connectAttemptGeneration++;
     self.scanRetryCount = 0;
     [self rememberChromecastPeripheral:peripheral];
+    [self scheduleHIDPresenceGuardForPeripheral:peripheral];
     Emit(@"ble_connected", @{@"name": peripheral.name ?: @"Chromecast Voice Remote"});
     [peripheral discoverServices:@[[CBUUID UUIDWithString:ATVVServiceUUID]]];
 }
