@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "KKvoice",
-    platforms: [.macOS(.v12)],
+    platforms: [.macOS(.v13)],
     products: [.executable(name: "KKvoice", targets: ["KKvoice"])],
     targets: [
         .target(name: "VoiceSessions", path: "Session"),
