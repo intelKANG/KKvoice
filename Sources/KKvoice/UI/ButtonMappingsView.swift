@@ -254,10 +254,11 @@ struct ButtonMappingsView: View {
                             )
                             .fixedSize(horizontal: true, vertical: false)
                     }
-                    Text("用于语音输入")
+                    Text("短按切换收音，或长按说话松开结束")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
 
                 Spacer(minLength: 0)
