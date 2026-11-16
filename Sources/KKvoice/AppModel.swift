@@ -1118,6 +1118,16 @@ final class AppModel: ObservableObject {
         openExternalURL(Self.snapNoteWebsiteURL)
     }
 
+    func selectQuickNoteProvider(_ provider: QuickNoteProvider) {
+        guard canCaptureShortcut else {
+            statusText = "收音中，无法修改"
+            return
+        }
+        guard quickNoteProvider != provider else { return }
+        quickNoteProvider = provider
+        UserDefaults.standard.set(provider.rawValue, forKey: quickNoteProviderKey)
+    }
+
     @discardableResult
     func saveQuickNoteConfiguration(
         provider: QuickNoteProvider,

@@ -108,7 +108,6 @@ struct AboutView: View {
                     } label: {
                         Label("反馈问题 / 建议", systemImage: "arrow.up.right.square")
                     }
-                    .buttonStyle(.borderedProminent)
                     .help("在 GitHub Issues 提交问题或建议")
                 }
             }

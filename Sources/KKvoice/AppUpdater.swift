@@ -347,7 +347,7 @@ public final class AppUpdater: ObservableObject {
         guard !isBusy else { return }
         state = .checking
         let currentVersionRaw = currentVersionProvider()
-        let currentSemVer = SemanticVersion(currentVersionRaw) ?? SemanticVersion(components: [0, 1, 0])
+        let currentSemVer = SemanticVersion(currentVersionRaw) ?? SemanticVersion(components: [0, 2, 0])
 
         do {
             let data = try await releaseDataFetcher(Self.latestReleaseAPIURL)
@@ -694,7 +694,7 @@ public final class AppUpdater: ObservableObject {
            let short = dict["CFBundleShortVersionString"] as? String {
             return short.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        return "0.1.0"
+        return "0.2.0"
     }
 
     @Sendable

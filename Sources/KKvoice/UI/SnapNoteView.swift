@@ -3,15 +3,33 @@ import VoiceSessions
 
 struct SnapNoteView: View {
     @ObservedObject var model: AppModel
-    @State private var draftProvider: QuickNoteProvider = .appleNotes
-    @State private var tokenInput: String = ""
-    @State private var draftShortcut: String? = nil
-    @State private var draftTag: String = ""
-    @State private var draftEndpoint: String = AppModel.defaultSnapNoteEndpoint
-    @State private var draftPort: String = String(AppModel.defaultSnapNotePort)
+    @State private var tokenInput: String
+    @State private var draftShortcut: String?
+    @State private var draftTag: String
+    @State private var draftEndpoint: String
+    @State private var draftPort: String
 
     private static let controlColumnWidth: CGFloat = 240
     private static let wideControlColumnWidth: CGFloat = 310
+
+    init(model: AppModel) {
+        self.model = model
+        _tokenInput = State(initialValue: "")
+        _draftShortcut = State(initialValue: model.snapNoteShortcut)
+        _draftTag = State(initialValue: model.snapNoteTagName)
+        _draftEndpoint = State(initialValue: model.snapNoteMCPEndpoint)
+        _draftPort = State(initialValue: model.snapNoteMCPPort)
+    }
+
+    private var providerBinding: Binding<QuickNoteProvider> {
+        Binding(
+            get: { model.quickNoteProvider },
+            set: { newValue in
+                model.selectQuickNoteProvider(newValue)
+                syncUnsavedState()
+            }
+        )
+    }
 
     private var effectiveShortcutText: String {
         guard let raw = draftShortcut ?? model.snapNoteShortcut else {
@@ -21,13 +39,10 @@ struct SnapNoteView: View {
     }
 
     private var hasUnsavedChanges: Bool {
-        if draftProvider != model.quickNoteProvider {
-            return true
-        }
         if draftTag.trimmingCharacters(in: .whitespaces) != model.snapNoteTagName {
             return true
         }
-        if draftProvider == .snapNote {
+        if model.quickNoteProvider == .snapNote {
             let tokenDirty = !tokenInput.isEmpty
             let shortcutDirty = (draftShortcut != model.snapNoteShortcut)
             let endpointDirty = (draftEndpoint.trimmingCharacters(in: .whitespacesAndNewlines) != model.snapNoteMCPEndpoint)
@@ -81,8 +96,7 @@ struct SnapNoteView: View {
             loadFromModel()
             syncUnsavedState()
         }
-        .onChange(of: model.quickNoteProvider) { newValue in
-            draftProvider = newValue
+        .onChange(of: model.quickNoteProvider) { _ in
             syncUnsavedState()
         }
         .onChange(of: model.snapNoteShortcut) { newValue in
@@ -99,9 +113,6 @@ struct SnapNoteView: View {
         }
         .onChange(of: model.snapNoteMCPPort) { newValue in
             draftPort = newValue
-            syncUnsavedState()
-        }
-        .onChange(of: draftProvider) { _ in
             syncUnsavedState()
         }
         .onChange(of: tokenInput) { _ in
@@ -122,7 +133,6 @@ struct SnapNoteView: View {
     }
 
     private func loadFromModel() {
-        draftProvider = model.quickNoteProvider
         draftShortcut = model.snapNoteShortcut
         draftTag = model.snapNoteTagName
         draftEndpoint = model.snapNoteMCPEndpoint
@@ -132,7 +142,7 @@ struct SnapNoteView: View {
     @discardableResult
     private func performSave() -> Bool {
         let ok = model.saveQuickNoteConfiguration(
-            provider: draftProvider,
+            provider: model.quickNoteProvider,
             tagName: draftTag,
             token: tokenInput,
             shortcutEncoded: draftShortcut ?? model.snapNoteShortcut,
@@ -167,7 +177,7 @@ struct SnapNoteView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeader("设置", systemImage: "note.text.badge.plus") {
                     HStack(spacing: DS.s8) {
-                        if draftProvider == .snapNote {
+                        if model.quickNoteProvider == .snapNote {
                             Button {
                                 model.openSnapNoteWebsite()
                             } label: {
@@ -192,7 +202,7 @@ struct SnapNoteView: View {
                 CardDivider()
 
                 LabeledRow("笔记软件", systemImage: "app.badge.checkmark") {
-                    Picker("", selection: $draftProvider) {
+                    Picker("", selection: providerBinding) {
                         ForEach(QuickNoteProvider.allCases) { provider in
                             Text(provider.title).tag(provider)
                         }
@@ -203,7 +213,7 @@ struct SnapNoteView: View {
                     .disabled(model.isControlsLocked)
                 }
 
-                if draftProvider == .snapNote {
+                if model.quickNoteProvider == .snapNote {
                     CardDivider()
 
                     LabeledRow(
@@ -284,7 +294,7 @@ struct SnapNoteView: View {
 
                 LabeledRow(
                     "标签",
-                    subtitle: draftProvider == .appleNotes ? "新建备忘录后自动写入 #标签（1–20 字）" : "新建笔记后自动添加（1–20 字）",
+                    subtitle: model.quickNoteProvider == .appleNotes ? "新建备忘录后自动写入 #标签（1–20 字）" : "新建笔记后自动添加（1–20 字）",
                     systemImage: "tag"
                 ) {
                     TextField("闪念", text: $draftTag)
@@ -325,7 +335,7 @@ struct SnapNoteView: View {
 
                 CardDivider()
 
-                if draftProvider == .appleNotes {
+                if model.quickNoteProvider == .appleNotes {
                     VStack(alignment: .leading, spacing: 6) {
                         stepRow(number: "1", text: "按下映射为「新建快速笔记」的遥控器按键")
                         stepRow(number: "2", text: "自动唤醒系统「备忘录」并发送 ⌘N 新建空白笔记")

@@ -40,7 +40,7 @@ struct GeneralView: View {
 
     var body: some View {
         PageScaffold(title: "通用") {
-            VStack(alignment: .leading, spacing: DS.s12) {
+            VStack(alignment: .leading, spacing: 10) {
                 startupCard
                 updateCard
                 permissionsCard
@@ -49,8 +49,8 @@ struct GeneralView: View {
     }
 
     private var startupCard: some View {
-        Card(padding: DS.s16) {
-            VStack(alignment: .leading, spacing: 10) {
+        Card(padding: 13) {
+            VStack(alignment: .leading, spacing: 8) {
                 SectionHeader("启动与运行", systemImage: "power.circle")
 
                 CardDivider()
@@ -138,25 +138,33 @@ struct GeneralView: View {
                                 .controlSize(.small)
                                 .disabled(model.isControlsLocked)
                             }
-
-                            Button(role: .destructive) {
-                                model.promptUninstallDialog()
-                            } label: {
-                                Text("卸载 KKvoice…")
-                                    .foregroundStyle(.red)
-                            }
-                            .controlSize(.small)
-                            .disabled(model.isControlsLocked)
                         }
                     }
+                }
+
+                CardDivider()
+
+                LabeledRow(
+                    "完全卸载 KKvoice",
+                    subtitle: "移除虚拟麦克风驱动、清理配置并将应用移至废纸篓",
+                    systemImage: "trash"
+                ) {
+                    Button(role: .destructive) {
+                        model.promptUninstallDialog()
+                    } label: {
+                        Text("卸载 KKvoice…")
+                            .foregroundStyle(.red)
+                    }
+                    .controlSize(.small)
+                    .disabled(model.isControlsLocked || model.isDriverInstalling)
                 }
             }
         }
     }
 
     private var updateCard: some View {
-        Card(padding: DS.s16) {
-            VStack(alignment: .leading, spacing: 10) {
+        Card(padding: 13) {
+            VStack(alignment: .leading, spacing: 8) {
                 SectionHeader("软件更新", systemImage: "arrow.triangle.2.circlepath.circle") {
                     HStack(spacing: DS.s8) {
                         Text(model.updater.statusSummaryText)
@@ -214,8 +222,8 @@ struct GeneralView: View {
     }
 
     private var permissionsCard: some View {
-        Card(padding: DS.s16) {
-            VStack(alignment: .leading, spacing: 10) {
+        Card(padding: 13) {
+            VStack(alignment: .leading, spacing: 8) {
                 SectionHeader("系统权限", systemImage: "hand.raised.circle")
 
                 CardDivider()
