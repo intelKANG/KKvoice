@@ -321,9 +321,22 @@ struct ConnectionView: View {
                         icon: "keyboard",
                         tone: keyboardTone
                     )
+                    statusTile(
+                        title: "音源",
+                        value: model.activeOrStandbySource.shortTitle,
+                        icon: model.activeOrStandbySource.isRemote ? "appletvremote.gen4" : "mic.fill",
+                        tone: audioSourceTone
+                    )
                 }
             }
         }
+    }
+
+    private var audioSourceTone: StatusTone {
+        if model.isRecording {
+            return .recording
+        }
+        return .connected
     }
 
     private var keyboardTone: StatusTone {
@@ -513,6 +526,49 @@ struct ConnectionView: View {
                         RoundedRectangle(cornerRadius: DS.controlRadius, style: .continuous)
                             .fill(Color.orange.opacity(0.08))
                     )
+                }
+
+                CardDivider()
+
+                LabeledRow(
+                    "Mac 麦克风",
+                    subtitle: "遥控器未就绪时自动使用",
+                    systemImage: "laptopcomputer"
+                ) {
+                    Menu {
+                        Button {
+                            model.selectSystemDefaultMacMic()
+                        } label: {
+                            if model.selectedMacMicUID.isEmpty {
+                                Label("系统默认", systemImage: "checkmark")
+                            } else {
+                                Text("系统默认")
+                            }
+                        }
+
+                        if !model.availableMacMics.isEmpty {
+                            Divider()
+                            ForEach(model.availableMacMics, id: \.uid) { mic in
+                                Button {
+                                    model.selectMacMic(uid: mic.uid)
+                                } label: {
+                                    if model.selectedMacMicUID == mic.uid {
+                                        Label(mic.displayName, systemImage: "checkmark")
+                                    } else {
+                                        Text(mic.displayName)
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Text(model.selectedMacMicTitle)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .menuStyle(.borderedButton)
+                    .frame(width: Self.controlColumnWidth)
+                    .disabled(model.isControlsLocked)
                 }
 
                 CardDivider()

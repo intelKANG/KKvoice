@@ -165,6 +165,10 @@ final class AppModel: ObservableObject {
     @Published var selectedDeviceIndex: Int = 0
     @Published var deviceLoadFailed: Bool = false
 
+    @Published var availableMacMics: [KKAudioInputDevice] = []
+    @Published var selectedMacMicUID: String = ""
+    @Published var currentAudioSource: AudioSource? = nil
+
     @Published var wakeSelectionIndex: Int = 0
     @Published var inputSelectionIndex: Int = 0
     @Published var voiceModeIndex: Int = 0
@@ -215,8 +219,7 @@ final class AppModel: ObservableObject {
         status: { [weak self] text in self?.statusText = text }
     )
     private let output = KKCoreAudioOutput()
-    private lazy var audio = RemoteAudioBridge(output: output)
-    private var outputSessions: [UUID: UUID] = [:]
+    private lazy var audioRouter = AudioSourceRouter(output: output, autoRefreshDevices: false)
     private var inputAppWatchdog: Timer?
     private var inputAppObservedActive = false
     private var inputAppInactiveSamples = 0
@@ -230,13 +233,28 @@ final class AppModel: ObservableObject {
             guard let self, let uid = self.selectedDeviceUID else {
                 throw NSError(domain: "KKvoice", code: 10, userInfo: [NSLocalizedDescriptionKey: "未选择虚拟麦克风"])
             }
-            let audioID = try self.audio.start(deviceUID: uid)
-            self.outputSessions[session] = audioID
+            do {
+                let source = try self.audioRouter.beginSession(
+                    session: session,
+                    virtualDeviceUID: uid,
+                    remoteReady: self.voiceChannelReady
+                )
+                self.currentAudioSource = source
+                if case .mac = source {
+                    self.startInputAppWatchdog()
+                }
+            } catch let error as MacMicrophoneError {
+                if error == .permissionDenied {
+                    self.requiredPermission = "microphone"
+                }
+                throw error
+            }
         },
         endOutput: { [weak self] session in
-            guard let self, let id = self.outputSessions.removeValue(forKey: session) else { return nil }
-            _ = self.audio.stop(session: id)
-            return self.output.lastStopError
+            guard let self else { return nil }
+            self.stopInputAppWatchdog()
+            self.currentAudioSource = nil
+            return self.audioRouter.endSession(session: session)
         },
         command: { [weak self] message in
             guard let self else { throw NSError(domain: "KKvoice", code: 11) }
@@ -250,7 +268,8 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             self.statusText = text
             self.syncVoicePhase()
-        }
+        },
+        allowKeyboardFallbackWhenNotReady: true
     )
 
     var canConnect: Bool { !isSessionActive }
@@ -308,6 +327,16 @@ final class AppModel: ObservableObject {
         }
         buttonDispatcher.createSnapNote = { [weak self] in
             self?.createSnapNote()
+        }
+        self.selectedMacMicUID = audioRouter.selectedMacMicUID
+        audioRouter.onPermissionDenied = { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.requiredPermission = "microphone"
+                self.currentAudioSource = nil
+                self.voice.audioFailed("需要麦克风权限")
+                self.connectionPhase = .permissionRequired("microphone")
+            }
         }
 
         updateCustomShortcutTitles()
@@ -401,6 +430,34 @@ final class AppModel: ObservableObject {
             deviceLoadFailed = true
             statusText = "读取音频设备失败：\(error)"
         }
+        refreshMacMics()
+    }
+
+    func refreshMacMics() {
+        audioRouter.refreshMacMics()
+        availableMacMics = audioRouter.availableMacMics
+        selectedMacMicUID = audioRouter.selectedMacMicUID
+    }
+
+    func selectSystemDefaultMacMic() {
+        audioRouter.selectSystemDefaultMacMic()
+        selectedMacMicUID = audioRouter.selectedMacMicUID
+    }
+
+    func selectMacMic(uid: String) {
+        audioRouter.selectMacMic(uid: uid)
+        selectedMacMicUID = audioRouter.selectedMacMicUID
+    }
+
+    var selectedMacMicTitle: String {
+        audioRouter.selectedMacMicTitle
+    }
+
+    var activeOrStandbySource: AudioSource {
+        if let currentAudioSource {
+            return currentAudioSource
+        }
+        return audioRouter.activeOrStandbySource(remoteReady: voiceChannelReady)
     }
 
     func deviceDisplayTitle(_ device: KKAudioOutputDevice) -> String {
@@ -586,7 +643,10 @@ final class AppModel: ObservableObject {
         snapTask?.cancel()
         if let adapter = snapAdapter { Task { await adapter.helperDisconnected() } }
         snapAdapter = nil
+        voice.cancel()
         voice.setReady(false)
+        _ = audioRouter.endSession()
+        currentAudioSource = nil
         bridge.stop()
     }
 
@@ -794,9 +854,8 @@ final class AppModel: ObservableObject {
         case "audio_frame":
             guard message["sampleRate"] as? Int == 16_000,
                   let encoded = message["pcmBase64"] as? String,
-                  let pcm = Data(base64Encoded: encoded),
-                  let session = outputSessions.values.first else { return }
-            _ = audio.receive(pcm, session: session)
+                  let pcm = Data(base64Encoded: encoded) else { return }
+            _ = audioRouter.receiveRemotePCM(pcm)
         case "mic_open_error":
             if let code = message["code"] as? NSNumber {
                 voice.audioFailed("麦克风开启失败（\(code.uint64Value)）")
@@ -832,7 +891,10 @@ final class AppModel: ObservableObject {
             if let adapter = snapAdapter { Task { await adapter.helperDisconnected() } }
             snapAdapter = nil
             buttonDispatcher.reset()
+            voice.cancel()
             voice.setReady(false)
+            _ = audioRouter.endSession()
+            currentAudioSource = nil
             isSessionActive = false
             hidConnected = false
             voiceChannelReady = false

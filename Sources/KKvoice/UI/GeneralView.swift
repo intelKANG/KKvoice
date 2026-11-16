@@ -139,6 +139,19 @@ struct GeneralView: View {
                     }
                     .controlSize(.small)
                 }
+
+                CardDivider()
+
+                LabeledRow(
+                    "麦克风",
+                    subtitle: "遥控器未就绪时使用 Mac 麦克风",
+                    systemImage: "mic.circle"
+                ) {
+                    Button("打开设置") {
+                        model.openPermissionSettings(for: "microphone")
+                    }
+                    .controlSize(.small)
+                }
             }
         }
     }
