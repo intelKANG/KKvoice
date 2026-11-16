@@ -18,9 +18,9 @@ The app sends JSON-line commands to `KKvoiceRemoteHelper`. Keep command ordering
 
 `KKvoiceRemoteHelper` uses bounded active BLE discovery windows combined with kernel-driven `IOHIDManager` passive wakeup:
 
-- On helper startup (`10s`), disconnect (`6s`), or manual UI scan (`{"type": "scan_remote", "duration": 30}`), the helper checks `retrieveConnectedPeripheralsWithServices` every `2.0s` and runs `scanForPeripheralsWithServices` (`CBCentralManagerScanOptionAllowDuplicatesKey: @NO`).
+- On first-time pairing (`60s`), startup when a known remote exists (`15s`), HID wakeup (`10s`), disconnect (`6s`), or manual UI scan (`{"type": "scan_remote", "duration": 60}`), the helper polls `retrievePeripheralsWithIdentifiers` (using the persisted `lastChromecastPeripheralUUID`) and `retrieveConnectedPeripheralsWithServices` (`@[ATVVServiceUUID, @"1812", @"180A", @"180F", @"1800"]`) every `2.0s`, and runs unfiltered BLE advertisement scanning `scanForPeripheralsWithServices:nil` (`CBCentralManagerScanOptionAllowDuplicatesKey: @NO`) with strict `"Chromecast Remote"` name matching so 31-byte pairing advertisements are captured immediately without matching unrelated ATVV remotes.
 - If the window expires without finding the remote, the helper stops `discoveryTimer` and calls `[central stopScan]`, emitting `{"type": "remote_standby"}` so the Mac consumes **zero background BLE scan power** when away from the remote.
-- As soon as the remote wakes up nearby (matching `HIDDeviceMatchedCallback` / `hid_connected` or delivering any HID button report while `peripheral == nil`), the helper immediately opens a `10.0s` discovery window on the main queue and reconnects the ATVV voice service.
+- As soon as the remote wakes up nearby (matching `HIDDeviceMatchedCallback` / `hid_connected` or delivering any HID button report while `peripheral == nil`), the helper immediately reconnects the known peripheral or opens a `10.0s` discovery window on the main queue.
 - `AppModel` persists `hasEverConnectedRemote` in `UserDefaults`: new Macs (`hasEverConnectedRemote == false`) display the first-time Bluetooth pairing bar (`同时长按「← + 🏠」3 秒`), while returning users away from their remote (`hasEverConnectedRemote == true`) see a calm offline standby state (`遥控器离线 · 当前使用 Mac 麦克风 · 按遥控器任意键自动重连`).
 
 ## In-app updater (`AppUpdater`)
