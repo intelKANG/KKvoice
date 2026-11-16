@@ -50,6 +50,7 @@ static void Log(NSString *message) {
 @property(nonatomic, strong) CBCharacteristic *controlCharacteristic;
 @property(nonatomic, strong) NSTimer *keepAliveTimer;
 @property(nonatomic, strong) NSTimer *discoveryTimer;
+@property(nonatomic, strong) NSTimer *discoveryWindowTimer;
 @property(nonatomic, assign) BOOL scanningEmitted;
 @property(nonatomic, strong) NSDictionary *keyboardConfig;
 @property(nonatomic, strong) NSDictionary *buttonMappings;
@@ -124,6 +125,7 @@ static void Log(NSString *message) {
 - (void)requestCapabilitiesIfReady;
 - (void)failCurrentPeripheral:(NSString *)message;
 - (void)discoverRemote;
+- (void)startDiscoveryWindowWithDuration:(NSTimeInterval)duration;
 - (void)pollOrScanForRemote;
 - (void)startDiscoveryTimer;
 - (void)stopDiscoveryTimer;
@@ -145,7 +147,7 @@ static void HIDDeviceMatchedCallback(void *context, IOReturn result, void *sende
         if (context) {
             RemoteHelper *helper = (__bridge RemoteHelper *)context;
             dispatch_async(dispatch_get_main_queue(), ^{
-                [helper discoverRemote];
+                [helper startDiscoveryWindowWithDuration:10.0];
             });
         }
     }
@@ -296,6 +298,14 @@ static CGEventRef KeyboardEventCallback(
         if ([buttonId isKindOfClass:[NSString class]] && [pickerId isKindOfClass:[NSString class]]) {
             [self chooseFileForButton:buttonId pickerId:pickerId];
         }
+    } else if ([type isEqualToString:@"scan_remote"]) {
+        NSTimeInterval duration = [message[@"duration"] respondsToSelector:@selector(doubleValue)]
+            ? [message[@"duration"] doubleValue] : 30.0;
+        if (duration <= 0) duration = 30.0;
+        self.scanningEmitted = NO;
+        if (self.central.state == CBManagerStatePoweredOn && !self.peripheral) {
+            [self startDiscoveryWindowWithDuration:duration];
+        }
     } else if ([type isEqualToString:@"shutdown"]) {
         [self shutdown];
     }
@@ -401,7 +411,7 @@ static CGEventRef KeyboardEventCallback(
 
 - (void)handleReportID:(uint32_t)reportID data:(NSData *)data {
     if (!self.peripheral && !self.stopped && self.central.state == CBManagerStatePoweredOn) {
-        [self pollOrScanForRemote];
+        [self startDiscoveryWindowWithDuration:10.0];
     }
     if (reportID != 0x01 || data.length == 0) return;
     const uint8_t *bytes = data.bytes;
@@ -470,12 +480,34 @@ static CGEventRef KeyboardEventCallback(
 - (void)stopDiscoveryTimer {
     [self.discoveryTimer invalidate];
     self.discoveryTimer = nil;
+    [self.discoveryWindowTimer invalidate];
+    self.discoveryWindowTimer = nil;
 }
 
 - (void)discoverRemote {
-    if (self.stopped || self.central.state != CBManagerStatePoweredOn || self.peripheral) return;
-    [self startDiscoveryTimer];
+    [self startDiscoveryWindowWithDuration:10.0];
+}
+
+- (void)startDiscoveryWindowWithDuration:(NSTimeInterval)duration {
+    if (self.stopped || self.central.state != CBManagerStatePoweredOn || self.peripheral) {
+        [self stopDiscoveryTimer];
+        return;
+    }
+    if (duration <= 0) duration = 12.0;
     [self pollOrScanForRemote];
+    if (self.peripheral) return;
+
+    [self startDiscoveryTimer];
+    [self.discoveryWindowTimer invalidate];
+    __weak RemoteHelper *weakSelf = self;
+    self.discoveryWindowTimer = [NSTimer scheduledTimerWithTimeInterval:duration repeats:NO block:^(NSTimer *timer) {
+        RemoteHelper *helper = weakSelf;
+        if (!helper || helper.stopped || helper.peripheral) return;
+        [helper stopDiscoveryTimer];
+        if (helper.central.isScanning) [helper.central stopScan];
+        helper.scanningEmitted = NO;
+        Emit(@"remote_standby", @{});
+    }];
 }
 
 - (void)pollOrScanForRemote {
@@ -501,7 +533,7 @@ static CGEventRef KeyboardEventCallback(
     }
     if (!self.central.isScanning) {
         [self.central scanForPeripheralsWithServices:@[service]
-                                             options:@{CBCentralManagerScanOptionAllowDuplicatesKey: @YES}];
+                                             options:@{CBCentralManagerScanOptionAllowDuplicatesKey: @NO}];
     }
     if (!self.scanningEmitted) {
         self.scanningEmitted = YES;
@@ -997,7 +1029,7 @@ static CGEventRef KeyboardEventCallback(
     self.scanRetryScheduled = NO;
     self.scanRetryCount = 0;
     self.scanningEmitted = NO;
-    [self discoverRemote];
+    [self startDiscoveryWindowWithDuration:6.0];
 }
 
 - (uint16_t)keyCodeForName:(NSString *)name {
