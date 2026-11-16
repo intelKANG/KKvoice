@@ -95,7 +95,7 @@ struct AboutView: View {
 struct AppLogoImage: View {
     var size: CGFloat = 36
 
-    private static var cachedLogo: NSImage? = {
+    private static func loadLogo() -> NSImage? {
         if let resourceURL = Bundle.main.resourceURL {
             let bundled = resourceURL.appendingPathComponent("KKvoice-logo.png")
             if let img = NSImage(contentsOf: bundled) {
@@ -112,7 +112,7 @@ struct AppLogoImage: View {
             return img
         }
         return nil
-    }()
+    }
 
     var body: some View {
         ZStack {
@@ -120,19 +120,19 @@ struct AppLogoImage: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.13, green: 0.19, blue: 0.34),
-                            Color(red: 0.08, green: 0.12, blue: 0.22)
+                            Color(red: 0.98, green: 0.98, blue: 0.99),
+                            Color(red: 0.92, green: 0.93, blue: 0.96)
                         ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
                 )
 
-            if let image = Self.cachedLogo {
+            if let image = Self.loadLogo() {
                 Image(nsImage: image)
                     .resizable()
                     .interpolation(.high)
@@ -141,7 +141,7 @@ struct AppLogoImage: View {
             } else {
                 Image(systemName: "mic.badge.plus")
                     .font(.system(size: size * 0.45, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color(red: 0.11, green: 0.13, blue: 0.16))
             }
         }
         .frame(width: size, height: size)

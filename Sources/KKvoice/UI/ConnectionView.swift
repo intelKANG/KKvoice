@@ -126,9 +126,10 @@ struct ConnectionView: View {
                         highlighted: remoteHighlightedID,
                         compact: true
                     )
-                    .padding(.vertical, DS.s12)
+                    .padding(.vertical, 8)
                 }
-                .frame(height: 224)
+                .frame(height: 220)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .onAppear { pulseRing = model.isRecording }
                 .onChange(of: model.isRecording) { active in
                     pulseRing = active
@@ -270,8 +271,13 @@ struct ConnectionView: View {
     }
 
     private var hidStepText: String {
-        if let perm = model.requiredPermission, perm == "input-monitoring" {
-            return "需输入监控"
+        if let perm = model.requiredPermission {
+            if perm == "input-monitoring" {
+                return "需输入监控"
+            }
+            if perm == "accessibility" {
+                return "需辅助功能"
+            }
         }
         if model.hidConnected {
             return "已就绪"
