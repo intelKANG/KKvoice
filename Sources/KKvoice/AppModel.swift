@@ -48,6 +48,27 @@ enum AppAppearanceMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum QuickNoteProvider: String, CaseIterable, Identifiable {
+    case appleNotes
+    case snapNote
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .appleNotes: return "Apple 备忘录"
+        case .snapNote: return "闪念笔记"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .appleNotes: return "note.text"
+        case .snapNote: return "bolt.horizontal.circle"
+        }
+    }
+}
+
 enum SidebarTab: String, CaseIterable, Identifiable {
     case connection
     case mappings
@@ -61,7 +82,7 @@ enum SidebarTab: String, CaseIterable, Identifiable {
         switch self {
         case .connection: return "连接"
         case .mappings: return "按键"
-        case .snapNote: return "闪念笔记"
+        case .snapNote: return "快速笔记"
         case .general: return "通用"
         case .about: return "关于"
         }
@@ -192,8 +213,11 @@ final class AppModel: ObservableObject {
     @Published var showMenuBarIcon: Bool = true
 
     @Published var mappings: ButtonMappings
+    @Published var quickNoteProvider: QuickNoteProvider = .appleNotes
     @Published var snapNoteShortcut: String? = nil
     @Published var snapNoteTagName: String = SnapNoteCoordinator.defaultTagName
+    @Published var snapNoteMCPEndpoint: String = AppModel.defaultSnapNoteEndpoint
+    @Published var snapNoteMCPPort: String = String(AppModel.defaultSnapNotePort)
     @Published var hasSnapNoteToken: Bool = false
     @Published var isSnapNoteBusy: Bool = false
 
@@ -219,8 +243,15 @@ final class AppModel: ObservableObject {
     private var snapTask: Task<Void, Never>? {
         didSet { isSnapNoteBusy = (snapTask != nil) }
     }
+    static let defaultSnapNoteEndpoint = "http://127.0.0.1:31090/snapnote/data-source/mcp"
+    static let defaultSnapNotePort = 31090
+    static let snapNoteWebsiteURL = "https://www.xingtext.com/zh/snapnote/"
+
+    let quickNoteProviderKey = "quickNoteProvider"
     let snapShortcutKey = "snapNoteNewShortcut"
     let snapTagKey = "snapNoteTagName"
+    let snapNoteMCPEndpointKey = "snapNoteMCPEndpoint"
+    let snapNoteMCPPortKey = "snapNoteMCPPort"
     let showMenuBarIconKey = "showMenuBarIcon"
     let hasEverConnectedRemoteKey = "hasEverConnectedRemote"
     private let mappingStore = ButtonMappingStore()
@@ -326,12 +357,29 @@ final class AppModel: ObservableObject {
         self.wakeSelectionIndex = keyboardSettings.wakeSelection(choices: InputShortcut.choices)
         self.inputSelectionIndex = keyboardSettings.inputSelection(choices: InputShortcut.choices)
         self.chosenInputShortcut = keyboardSettings.inputDefinition().systemShortcut
+        let storedProvider = UserDefaults.standard.string(forKey: quickNoteProviderKey)
+            .flatMap(QuickNoteProvider.init(rawValue:)) ?? .appleNotes
+        self.quickNoteProvider = storedProvider
         self.snapNoteShortcut = UserDefaults.standard.string(forKey: snapShortcutKey)
         if let storedTag = UserDefaults.standard.string(forKey: snapTagKey),
            SnapNoteCoordinator.validTagName(storedTag) {
             self.snapNoteTagName = storedTag.trimmingCharacters(in: .whitespaces)
         } else {
             self.snapNoteTagName = SnapNoteCoordinator.defaultTagName
+        }
+        let storedPort = UserDefaults.standard.integer(forKey: snapNoteMCPPortKey)
+        let fallbackPort = (1...65535).contains(storedPort) ? storedPort : Self.defaultSnapNotePort
+        if let storedEndpoint = UserDefaults.standard.string(forKey: snapNoteMCPEndpointKey),
+           let normalized = Self.normalizeMCPEndpoint(storedEndpoint, fallbackPort: fallbackPort) {
+            self.snapNoteMCPEndpoint = normalized.endpoint
+            self.snapNoteMCPPort = String(normalized.port)
+        } else if (1...65535).contains(storedPort),
+                  let withPort = Self.applyingPort(String(storedPort), to: Self.defaultSnapNoteEndpoint) {
+            self.snapNoteMCPEndpoint = withPort
+            self.snapNoteMCPPort = String(storedPort)
+        } else {
+            self.snapNoteMCPEndpoint = Self.defaultSnapNoteEndpoint
+            self.snapNoteMCPPort = String(Self.defaultSnapNotePort)
         }
         self.hasSnapNoteToken = snapTokenStore.exists()
 
@@ -855,44 +903,181 @@ final class AppModel: ObservableObject {
         return selected.encoded
     }
 
+    static func normalizeMCPEndpoint(
+        _ raw: String,
+        fallbackPort: Int? = nil
+    ) -> (endpoint: String, port: Int, url: URL)? {
+        var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              trimmed.rangeOfCharacter(from: .whitespacesAndNewlines.union(.controlCharacters)) == nil else {
+            return nil
+        }
+        if !trimmed.lowercased().hasPrefix("http://") && !trimmed.lowercased().hasPrefix("https://") {
+            trimmed = "http://" + trimmed
+        }
+        guard var components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = components.host,
+              !host.isEmpty else {
+            return nil
+        }
+        let resolvedPort = components.port ?? fallbackPort ?? defaultSnapNotePort
+        guard (1...65535).contains(resolvedPort) else { return nil }
+        components.port = resolvedPort
+        if components.path.isEmpty || components.path == "/" {
+            components.path = "/snapnote/data-source/mcp"
+        }
+        guard let url = components.url else { return nil }
+        return (endpoint: url.absoluteString, port: resolvedPort, url: url)
+    }
+
+    static func applyingPort(_ portString: String, to endpointString: String) -> String? {
+        let trimmedPort = portString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let port = Int(trimmedPort), (1...65535).contains(port) else { return nil }
+        var base = endpointString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if base.isEmpty {
+            base = defaultSnapNoteEndpoint
+        } else if !base.lowercased().hasPrefix("http://") && !base.lowercased().hasPrefix("https://") {
+            base = "http://" + base
+        }
+        guard var components = URLComponents(string: base),
+              let host = components.host, !host.isEmpty else {
+            return nil
+        }
+        components.port = port
+        if components.path.isEmpty || components.path == "/" {
+            components.path = "/snapnote/data-source/mcp"
+        }
+        return components.url?.absoluteString
+    }
+
+    static func extractPortString(from endpointString: String) -> String? {
+        var candidate = endpointString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !candidate.lowercased().hasPrefix("http://") && !candidate.lowercased().hasPrefix("https://") {
+            candidate = "http://" + candidate
+        }
+        guard let components = URLComponents(string: candidate),
+              let port = components.port,
+              (1...65535).contains(port) else {
+            return nil
+        }
+        return String(port)
+    }
+
+    func openSnapNoteWebsite() {
+        openExternalURL(Self.snapNoteWebsiteURL)
+    }
+
+    @discardableResult
+    func saveQuickNoteConfiguration(
+        provider: QuickNoteProvider,
+        tagName: String,
+        token: String = "",
+        shortcutEncoded: String? = nil,
+        mcpEndpoint: String? = nil,
+        mcpPort: String? = nil
+    ) -> Bool {
+        guard canCaptureShortcut else {
+            statusText = "收音中，无法修改"
+            return false
+        }
+        let resolvedTag = tagName.trimmingCharacters(in: .whitespaces)
+        guard SnapNoteCoordinator.validTagName(resolvedTag) else {
+            statusText = "标签需为 1–20 字单行文字"
+            return false
+        }
+
+        switch provider {
+        case .appleNotes:
+            UserDefaults.standard.set(provider.rawValue, forKey: quickNoteProviderKey)
+            UserDefaults.standard.set(resolvedTag, forKey: snapTagKey)
+            quickNoteProvider = provider
+            snapNoteTagName = resolvedTag
+            statusText = "已保存"
+            return true
+
+        case .snapNote:
+            let portCandidate = (mcpPort ?? snapNoteMCPPort).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let parsedPort = Int(portCandidate), (1...65535).contains(parsedPort) else {
+                statusText = "端口号无效（需为 1–65535）"
+                return false
+            }
+            let rawEndpoint = mcpEndpoint ?? snapNoteMCPEndpoint
+            let endpointWithPort = Self.applyingPort(String(parsedPort), to: rawEndpoint) ?? rawEndpoint
+            guard let normalized = Self.normalizeMCPEndpoint(endpointWithPort, fallbackPort: parsedPort) else {
+                statusText = "MCP 地址无效，请检查格式"
+                return false
+            }
+            do {
+                if !token.isEmpty {
+                    try snapTokenStore.save(token)
+                    hasSnapNoteToken = true
+                }
+                guard let encoded = shortcutEncoded,
+                      SnapNoteCoordinator.validShortcut(encoded) else {
+                    statusText = "新建快捷键需包含修饰键"
+                    return false
+                }
+                UserDefaults.standard.set(provider.rawValue, forKey: quickNoteProviderKey)
+                UserDefaults.standard.set(encoded, forKey: snapShortcutKey)
+                UserDefaults.standard.set(resolvedTag, forKey: snapTagKey)
+                UserDefaults.standard.set(normalized.endpoint, forKey: snapNoteMCPEndpointKey)
+                UserDefaults.standard.set(normalized.port, forKey: snapNoteMCPPortKey)
+                quickNoteProvider = provider
+                snapNoteShortcut = encoded
+                snapNoteTagName = resolvedTag
+                snapNoteMCPEndpoint = normalized.endpoint
+                snapNoteMCPPort = String(normalized.port)
+                statusText = "已保存"
+                return true
+            } catch {
+                statusText = "Token 保存失败：\(error.localizedDescription)"
+                return false
+            }
+        }
+    }
+
     @discardableResult
     func saveSnapNoteConfiguration(
         token: String,
         shortcutEncoded: String?,
         tagName: String? = nil
     ) -> Bool {
-        guard canCaptureShortcut else {
-            statusText = "收音中，无法修改"
-            return false
-        }
-        let resolvedTag = (tagName ?? snapNoteTagName).trimmingCharacters(in: .whitespaces)
-        guard SnapNoteCoordinator.validTagName(resolvedTag) else {
-            statusText = "标签需为 1–20 字单行文字"
-            return false
-        }
-        do {
-            if !token.isEmpty {
-                try snapTokenStore.save(token)
-                hasSnapNoteToken = true
-            }
-            guard let encoded = shortcutEncoded,
-                  SnapNoteCoordinator.validShortcut(encoded) else {
-                statusText = "新建快捷键需包含修饰键"
-                return false
-            }
-            UserDefaults.standard.set(encoded, forKey: snapShortcutKey)
-            UserDefaults.standard.set(resolvedTag, forKey: snapTagKey)
-            snapNoteShortcut = encoded
-            snapNoteTagName = resolvedTag
-            statusText = "已保存"
-            return true
-        } catch {
-            statusText = "Token 保存失败：\(error.localizedDescription)"
-            return false
-        }
+        saveQuickNoteConfiguration(
+            provider: .snapNote,
+            tagName: tagName ?? snapNoteTagName,
+            token: token,
+            shortcutEncoded: shortcutEncoded,
+            mcpEndpoint: snapNoteMCPEndpoint,
+            mcpPort: snapNoteMCPPort
+        )
     }
 
     func createSnapNote() {
+        let rawTag = UserDefaults.standard.string(forKey: snapTagKey) ?? snapNoteTagName
+        let tagName = SnapNoteCoordinator.validTagName(rawTag)
+            ? rawTag.trimmingCharacters(in: .whitespaces)
+            : SnapNoteCoordinator.defaultTagName
+
+        if quickNoteProvider == .appleNotes {
+            guard snapTask == nil else { statusText = "正在新建备忘录…"; return }
+            guard isSessionActive else { statusText = "未连接遥控器"; return }
+            guard case .idle = voice.phase else { statusText = "收音中，无法操作"; return }
+            do {
+                statusText = "正在新建备忘录…"
+                try bridge.send([
+                    "type": "post_key",
+                    "target": "appleNotesNewNote",
+                    "actionId": UUID().uuidString.lowercased(),
+                    "tag": tagName
+                ])
+            } catch {
+                statusText = "新建备忘录失败：\(error.localizedDescription)"
+            }
+            return
+        }
+
         guard snapTask == nil else { statusText = "正在创建闪念笔记…"; return }
         guard let adapter = snapAdapter else { statusText = "未连接遥控器"; return }
         guard case .idle = voice.phase else { statusText = "收音中，无法操作"; return }
@@ -900,16 +1085,13 @@ final class AppModel: ObservableObject {
             statusText = "未设置闪念笔记快捷键"
             return
         }
-        let rawTag = UserDefaults.standard.string(forKey: snapTagKey) ?? snapNoteTagName
-        let tagName = SnapNoteCoordinator.validTagName(rawTag)
-            ? rawTag.trimmingCharacters(in: .whitespaces)
-            : SnapNoteCoordinator.defaultTagName
+        let endpointURL = Self.normalizeMCPEndpoint(snapNoteMCPEndpoint)?.url ?? SnapNoteLocalTransport.endpoint
         do {
             guard let token = try snapTokenStore.load() else {
                 statusText = "未配置闪念笔记 Token"
                 return
             }
-            let client = try SnapNoteMCPClient(token: token)
+            let client = try SnapNoteMCPClient(token: token, endpoint: endpointURL)
             let coordinator = SnapNoteCoordinator(client: client, native: adapter, isRecording: { [weak self] in
                 await self?.isVoiceActive() ?? true
             })
@@ -1013,6 +1195,10 @@ final class AppModel: ObservableObject {
             }
         case "app_switcher_state":
             buttonDispatcher.switcherActive = message["active"] as? Bool == true
+        case "action_done":
+            if let msg = message["message"] as? String, !msg.isEmpty {
+                statusText = msg
+            }
         case "action_error":
             statusText = message["message"] as? String ?? "按键动作失败。"
         case "voice_press":
