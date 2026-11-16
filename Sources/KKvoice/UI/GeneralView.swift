@@ -24,18 +24,33 @@ struct GeneralView: View {
         )
     }
 
+    private var autoCheckUpdatesBinding: Binding<Bool> {
+        Binding(
+            get: { model.updater.autoCheckEnabled },
+            set: { model.updater.autoCheckEnabled = $0 }
+        )
+    }
+
+    private var autoInstallUpdatesBinding: Binding<Bool> {
+        Binding(
+            get: { model.updater.autoDownloadAndInstall },
+            set: { model.updater.autoDownloadAndInstall = $0 }
+        )
+    }
+
     var body: some View {
         PageScaffold(title: "通用") {
-            VStack(alignment: .leading, spacing: DS.s16) {
+            VStack(alignment: .leading, spacing: DS.s12) {
                 startupCard
+                updateCard
                 permissionsCard
             }
         }
     }
 
     private var startupCard: some View {
-        Card(padding: DS.s20) {
-            VStack(alignment: .leading, spacing: DS.s16) {
+        Card(padding: DS.s16) {
+            VStack(alignment: .leading, spacing: 10) {
                 SectionHeader("启动与运行", systemImage: "power.circle")
 
                 CardDivider()
@@ -73,7 +88,7 @@ struct GeneralView: View {
                         }
                         .controlSize(.small)
                     }
-                    .padding(DS.s12)
+                    .padding(10)
                     .background(
                         RoundedRectangle(cornerRadius: DS.controlRadius, style: .continuous)
                             .fill(Color.orange.opacity(0.10))
@@ -120,6 +135,55 @@ struct GeneralView: View {
         }
     }
 
+    private var updateCard: some View {
+        Card(padding: DS.s16) {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionHeader("软件更新", systemImage: "arrow.triangle.2.circlepath.circle") {
+                    HStack(spacing: DS.s8) {
+                        Text(model.updater.statusSummaryText)
+                            .font(.footnote)
+                            .foregroundStyle(model.updater.hasUpdateAvailable ? Color.accentColor : .secondary)
+                            .lineLimit(1)
+
+                        if model.updater.isBusy {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else if let info = model.updater.availableRelease {
+                            Button("一键更新 v\(info.version)") {
+                                model.updater.installUpdate(info)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        } else {
+                            Button("检查更新") {
+                                model.updater.checkForUpdates(userInitiated: true, showUpToDateAlert: true)
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
+
+                CardDivider()
+
+                HStack(spacing: DS.s24) {
+                    LabeledRow("自动检查更新", systemImage: "clock.arrow.2.circlepath") {
+                        Toggle("", isOn: autoCheckUpdatesBinding)
+                            .labelsHidden()
+                            .toggleStyle(.kkSwitch)
+                            .accessibilityLabel("自动检查更新")
+                    }
+
+                    LabeledRow("自动安装更新", systemImage: "arrow.down.circle") {
+                        Toggle("", isOn: autoInstallUpdatesBinding)
+                            .labelsHidden()
+                            .toggleStyle(.kkSwitch)
+                            .accessibilityLabel("自动安装更新")
+                    }
+                }
+            }
+        }
+    }
+
     private var driverRowSubtitle: String {
         if let err = model.driverInstallError {
             return err
@@ -131,8 +195,8 @@ struct GeneralView: View {
     }
 
     private var permissionsCard: some View {
-        Card(padding: DS.s20) {
-            VStack(alignment: .leading, spacing: DS.s16) {
+        Card(padding: DS.s16) {
+            VStack(alignment: .leading, spacing: 10) {
                 SectionHeader("系统权限", systemImage: "hand.raised.circle")
 
                 CardDivider()

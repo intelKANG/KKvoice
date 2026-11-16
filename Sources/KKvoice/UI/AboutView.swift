@@ -42,6 +42,35 @@ struct AboutView: View {
                 }
 
                 Spacer()
+
+                VStack(alignment: .trailing, spacing: 6) {
+                    if model.updater.isBusy {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text(model.updater.statusSummaryText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if let info = model.updater.availableRelease {
+                        Button("一键更新 v\(info.version)") {
+                            model.updater.installUpdate(info)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        Button("检查更新") {
+                            model.updater.checkForUpdates(userInitiated: true, showUpToDateAlert: true)
+                        }
+                    }
+
+                    if !model.updater.isBusy, case .idle = model.updater.state {
+                        EmptyView()
+                    } else if !model.updater.isBusy {
+                        Text(model.updater.statusSummaryText)
+                            .font(.caption2)
+                            .foregroundStyle(model.updater.hasUpdateAvailable ? Color.accentColor : .secondary)
+                    }
+                }
             }
         }
     }

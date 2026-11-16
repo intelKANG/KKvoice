@@ -173,7 +173,7 @@ struct ConnectionView: View {
         case .disconnected:
             return ""
         case .connecting:
-            return "按任意键唤醒"
+            return "配对或按键唤醒后将自动连接"
         case .keysConnected:
             return "正在连接语音"
         case .voiceReady:
@@ -513,7 +513,7 @@ struct ConnectionView: View {
                         Menu {
                             ForEach(Array(model.availableDevices.enumerated()), id: \.offset) { idx, dev in
                                 Button {
-                                    model.selectedDeviceIndex = idx
+                                    model.selectVirtualDevice(at: idx)
                                 } label: {
                                     if idx == model.selectedDeviceIndex {
                                         Label(model.deviceDisplayTitle(dev), systemImage: "checkmark")

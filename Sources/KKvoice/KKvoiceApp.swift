@@ -71,6 +71,7 @@ final class KKvoiceAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         if model.checkAndPromptDriverOnLaunch() {
             model.connect()
         }
+        model.updater.scheduleLaunchCheckIfNeeded(delaySeconds: 3.0)
     }
 
     static func makeMenuBarTemplateImage() -> NSImage {
@@ -169,6 +170,9 @@ final class KKvoiceAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         let show = NSMenuItem(title: "打开 KKvoice", action: #selector(showMainWindow), keyEquivalent: "")
         show.target = self
         menu.addItem(show)
+        let checkUpdate = NSMenuItem(title: "检查更新…", action: #selector(checkForUpdatesFromMenu), keyEquivalent: "")
+        checkUpdate.target = self
+        menu.addItem(checkUpdate)
         menu.addItem(.separator())
         menu.addItem(
             withTitle: "退出 KKvoice",
@@ -178,6 +182,11 @@ final class KKvoiceAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         statusItem?.menu = menu
         sender.performClick(nil)
         statusItem?.menu = nil
+    }
+
+    @objc private func checkForUpdatesFromMenu() {
+        showMainWindow()
+        model.updater.checkForUpdates(userInitiated: true, showUpToDateAlert: true)
     }
 
     @objc private func showMainWindow() {

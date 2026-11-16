@@ -97,6 +97,10 @@ struct MainView: View {
                     Circle()
                         .fill(Color.orange)
                         .frame(width: 7, height: 7)
+                } else if tab == .about && model.updater.hasUpdateAvailable {
+                    Circle()
+                        .fill(Color.accentColor)
+                        .frame(width: 7, height: 7)
                 }
             }
             .padding(.horizontal, 12)

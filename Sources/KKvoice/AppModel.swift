@@ -111,7 +111,7 @@ enum ConnectionPhase: Equatable {
         case .disconnected:
             return "未连接"
         case .connecting:
-            return "连接中"
+            return "搜索中"
         case .keysConnected:
             return "按键已连"
         case .voiceReady:
@@ -130,7 +130,7 @@ enum ConnectionPhase: Equatable {
         case .disconnected:
             return "未连接"
         case .connecting:
-            return "正在连接…"
+            return "正在自动搜索遥控器…"
         case .keysConnected:
             return "按键已就绪"
         case .voiceReady:
@@ -188,6 +188,9 @@ final class AppModel: ObservableObject {
     @Published var snapNoteTagName: String = SnapNoteCoordinator.defaultTagName
     @Published var hasSnapNoteToken: Bool = false
     @Published var isSnapNoteBusy: Bool = false
+
+    let updater: AppUpdater
+    private var updaterCancellable: AnyCancellable?
 
     @Published var unsavedPage: SidebarTab? = nil
     private var unsavedSaveHandler: (() -> Bool)? = nil
@@ -277,8 +280,8 @@ final class AppModel: ObservableObject {
 
     var canConnect: Bool { !isSessionActive && isKKvoiceMicAvailable && !isDriverInstalling }
     var canDisconnect: Bool { isSessionActive }
-    var canCaptureShortcut: Bool { !isSessionActive }
-    var isControlsLocked: Bool { isSessionActive }
+    var canCaptureShortcut: Bool { !isRecording }
+    var isControlsLocked: Bool { isRecording }
     var isKKvoiceMicAvailable: Bool {
         availableDevices.contains(where: { $0.uid == DriverInstaller.deviceUID })
     }
@@ -310,12 +313,15 @@ final class AppModel: ObservableObject {
         "短按切换，长按松开结束"
     ]
 
-    init(autoRefreshDevices: Bool = true) {
+    init(autoRefreshDevices: Bool = true, updater: AppUpdater? = nil) {
+        let resolvedUpdater = updater ?? AppUpdater.shared
+        self.updater = resolvedUpdater
         let initialMappings = mappingStore.load()
         self.mappings = initialMappings
         self.voiceModeIndex = UserDefaults.standard.bool(forKey: "remoteHybridGesture") ? 1 : 0
         self.wakeSelectionIndex = keyboardSettings.wakeSelection(choices: InputShortcut.choices)
         self.inputSelectionIndex = keyboardSettings.inputSelection(choices: InputShortcut.choices)
+        self.chosenInputShortcut = keyboardSettings.inputDefinition().systemShortcut
         self.snapNoteShortcut = UserDefaults.standard.string(forKey: snapShortcutKey)
         if let storedTag = UserDefaults.standard.string(forKey: snapTagKey),
            SnapNoteCoordinator.validTagName(storedTag) {
@@ -357,6 +363,14 @@ final class AppModel: ObservableObject {
                 self.voice.audioFailed("需要麦克风权限")
                 self.connectionPhase = .permissionRequired("microphone")
             }
+        }
+
+        self.updaterCancellable = resolvedUpdater.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+        resolvedUpdater.canPresentOrAutoInstall = { [weak self] in
+            guard let self else { return true }
+            return !self.isRecording
         }
 
         updateCustomShortcutTitles()
@@ -444,13 +458,23 @@ final class AppModel: ObservableObject {
             } else {
                 selectedDeviceIndex = 0
             }
+            selectedDeviceUID = availableDevices.indices.contains(selectedDeviceIndex)
+                ? availableDevices[selectedDeviceIndex].uid
+                : nil
         } catch {
             availableDevices = []
             selectedDeviceIndex = 0
+            selectedDeviceUID = nil
             deviceLoadFailed = true
             statusText = "读取音频设备失败：\(error)"
         }
         refreshMacMics()
+    }
+
+    func selectVirtualDevice(at index: Int) {
+        guard availableDevices.indices.contains(index) else { return }
+        selectedDeviceIndex = index
+        selectedDeviceUID = availableDevices[index].uid
     }
 
     func refreshMacMics() {
@@ -480,10 +504,10 @@ final class AppModel: ObservableObject {
         return audioRouter.activeOrStandbySource(remoteReady: voiceChannelReady)
     }
 
-    func installDriver(reinstall: Bool = false, autoConnectAfterInstall: Bool = false) {
+    func installDriver(reinstall: Bool = false, autoConnectAfterInstall: Bool = true) {
         guard !isDriverInstalling else { return }
-        guard !isSessionActive else {
-            statusText = "断开遥控器后可安装驱动"
+        guard !isRecording else {
+            statusText = "收音中，无法安装驱动"
             return
         }
         isDriverInstalling = true
@@ -539,10 +563,55 @@ final class AppModel: ObservableObject {
         deviceLoadFailed ? "读取设备失败" : "无可用虚拟麦克风"
     }
 
+    private func promptShortcutSafely(previous: ShortcutDefinition?, globalWake: Bool) -> ShortcutDefinition? {
+        guard canCaptureShortcut else { return nil }
+        if isSessionActive {
+            sendHelperConfigure(keyboardEnabled: false)
+        }
+        defer {
+            if isSessionActive {
+                reloadHelperConfiguration()
+            }
+        }
+        return ShortcutPicker.prompt(previous: previous, globalWake: globalWake)
+    }
+
+    private func sendHelperConfigure(keyboardEnabled: Bool) {
+        guard isSessionActive else { return }
+        let wakeDefinition = keyboardSettings.wakeDefinition()
+        let selectedWake = keyboardEnabled ? wakeDefinition?.keyName : nil
+        let modifiers = keyboardEnabled ? (wakeDefinition?.modifiers ?? []) : []
+        try? bridge.send([
+            "type": "configure",
+            "config": [
+                "hidSource": "iokit",
+                "keyboardTrigger": [
+                    "enabled": selectedWake != nil,
+                    "key": selectedWake ?? "Fn",
+                    "modifiers": modifiers,
+                    "captureCancelOnly": false,
+                    "passThrough": false
+                ],
+                "buttonMappings": [:]
+            ]
+        ])
+    }
+
+    func reloadHelperConfiguration() {
+        chosenInputShortcut = keyboardSettings.inputDefinition().systemShortcut
+        _ = voice.setRemoteGesture(voiceModeIndex == 1 ? .hybrid : .toggle)
+        guard isSessionActive else { return }
+        let wakeDefinition = keyboardSettings.wakeDefinition()
+        keyboardStatus.connecting(key: wakeDefinition?.keyName)
+        keyboardState = keyboardStatus.state
+        keyboardStatusText = keyboardStatus.text
+        sendHelperConfigure(keyboardEnabled: true)
+    }
+
     func selectWakeKey(at index: Int) {
         let choices = InputShortcut.choices
         if index == choices.count + 1 {
-            if let value = ShortcutPicker.prompt(previous: keyboardSettings.wakeDefinition(), globalWake: true) {
+            if let value = promptShortcutSafely(previous: keyboardSettings.wakeDefinition(), globalWake: true) {
                 keyboardSettings.saveWakeDefinition(value)
             }
         } else {
@@ -550,42 +619,47 @@ final class AppModel: ObservableObject {
         }
         wakeSelectionIndex = keyboardSettings.wakeSelection(choices: choices)
         updateCustomShortcutTitles()
+        reloadHelperConfiguration()
     }
 
     func promptCustomWakeShortcut() {
         guard canCaptureShortcut else { return }
-        if let value = ShortcutPicker.prompt(previous: keyboardSettings.wakeDefinition(), globalWake: true) {
+        if let value = promptShortcutSafely(previous: keyboardSettings.wakeDefinition(), globalWake: true) {
             keyboardSettings.saveWakeDefinition(value)
         }
         wakeSelectionIndex = keyboardSettings.wakeSelection(choices: InputShortcut.choices)
         updateCustomShortcutTitles()
+        reloadHelperConfiguration()
     }
 
     func selectInputKey(at index: Int) {
         let choices = InputShortcut.choices
         if index == choices.count {
-            if let value = ShortcutPicker.prompt(previous: keyboardSettings.inputDefinition(), globalWake: false) {
+            if let value = promptShortcutSafely(previous: keyboardSettings.inputDefinition(), globalWake: false) {
                 keyboardSettings.saveInputDefinition(value)
             }
         } else {
             keyboardSettings.saveInput(selection: index, choices: choices)
         }
         inputSelectionIndex = keyboardSettings.inputSelection(choices: choices)
+        chosenInputShortcut = keyboardSettings.inputDefinition().systemShortcut
         updateCustomShortcutTitles()
     }
 
     func promptCustomInputShortcut() {
         guard canCaptureShortcut else { return }
-        if let value = ShortcutPicker.prompt(previous: keyboardSettings.inputDefinition(), globalWake: false) {
+        if let value = promptShortcutSafely(previous: keyboardSettings.inputDefinition(), globalWake: false) {
             keyboardSettings.saveInputDefinition(value)
         }
         inputSelectionIndex = keyboardSettings.inputSelection(choices: InputShortcut.choices)
+        chosenInputShortcut = keyboardSettings.inputDefinition().systemShortcut
         updateCustomShortcutTitles()
     }
 
     func selectVoiceMode(at index: Int) {
         voiceModeIndex = index
         UserDefaults.standard.set(index == 1, forKey: "remoteHybridGesture")
+        _ = voice.setRemoteGesture(index == 1 ? .hybrid : .toggle)
     }
 
     func updateCustomShortcutTitles() {
@@ -734,12 +808,12 @@ final class AppModel: ObservableObject {
 
     func pickSnapNoteShortcut(currentEncoded: String? = nil) -> String? {
         guard canCaptureShortcut else {
-            statusText = "断开遥控器后可修改"
+            statusText = "收音中，无法修改"
             return nil
         }
         let source = currentEncoded ?? UserDefaults.standard.string(forKey: snapShortcutKey)
         let previous = source.flatMap(ShortcutDefinition.init(encoded:))
-        guard let selected = ShortcutPicker.prompt(previous: previous, globalWake: false),
+        guard let selected = promptShortcutSafely(previous: previous, globalWake: false),
               SnapNoteCoordinator.validShortcut(selected.encoded) else {
             statusText = "新建快捷键需包含修饰键"
             return nil
@@ -754,7 +828,7 @@ final class AppModel: ObservableObject {
         tagName: String? = nil
     ) -> Bool {
         guard canCaptureShortcut else {
-            statusText = "断开遥控器后可修改"
+            statusText = "收音中，无法修改"
             return false
         }
         let resolvedTag = (tagName ?? snapNoteTagName).trimmingCharacters(in: .whitespaces)
@@ -851,7 +925,7 @@ final class AppModel: ObservableObject {
             statusText = "按键已连接"
             syncVoicePhase()
         case "scanning":
-            statusText = "正在连接…"
+            statusText = "正在自动搜索遥控器…"
             if !voiceChannelReady && !hidConnected {
                 connectionPhase = .connecting
             }
