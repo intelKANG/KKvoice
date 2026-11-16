@@ -2,13 +2,13 @@
 
 ## Architecture & repository boundaries
 
-- `Sources/KKvoice`: SwiftUI settings window, menu-bar controller, audio source router (`AudioSourceRouter`), in-app driver installer (`DriverInstaller`), keyboard settings, button mappings, Vokie capture monitor, and orchestration.
+- `Sources/KKvoice`: SwiftUI settings window (`macOS 13.0+`), menu-bar controller, audio source router (`AudioSourceRouter`), in-app driver installer (`DriverInstaller`), keyboard settings, button mappings, Vokie capture monitor, and orchestration.
 - `Native/Helper`: Objective-C background process for Bluetooth discovery, Chromecast ATVV, remote buttons, keyboard event listening, and JSON-line IPC (`Native/Helper/SOURCE.md` records helper provenance).
 - `Session`: deterministic capture state machine, shortcut relay, and physical-key coordination.
 - `Audio`: CoreAudio output to the explicitly selected virtual device, Mac microphone fallback relay, PCM conversion, buffering, and session isolation.
 - `SnapNote`: local MCP client, Keychain token store, action coordinator, and helper cancellation adapter.
 - `Driver`: BlackHole-based `KKvoice Mic` HAL driver build script (`Driver/build-blackhole-driver.sh`), legacy local-dev patch script (`Driver/build-driver.sh`), and privileged installer.
-- `*Tests` and `Tests/KKvoiceTests`: hardware-free regression tests.
+- `*Tests` and `Tests/KKvoiceTests`: hardware-free regression tests (27 XCTest unit tests in `Tests/KKvoiceTests` plus 5 standalone `*Tests/run.sh` suites).
 
 Keep the remote protocol in the helper process and keep state transitions in the hardware-independent `Session` module. Do not move CoreAudio callbacks, BLE callbacks, or keychain access onto real-time audio or event-tap paths. Preserve third-party notices and do not commit credentials, personal notes, build products, local app bundles, or signing material.
 
@@ -28,36 +28,39 @@ swift test
 ./Scripts/build-app.sh
 ```
 
-`Scripts/build-helper.sh` compiles an arm64/x86_64 Objective-C helper with the macOS 12 deployment target. `Scripts/build-app.sh` runs that build, compiles the Swift package in release mode, copies the icon, helper, and (when built from BlackHole source) `KKvoiceMic.driver` into `dist/KKvoice.app`, and signs inside-out using the detected local Apple signing identity (`Developer ID Application` or `Apple Development` with Hardened Runtime, falling back to `-` ad-hoc signing when no certificate is found).
+The main Swift package `KKvoice` targets **macOS 13.0+** (`Package.swift` `platforms: [.macOS(.v13)]`), while `Scripts/build-helper.sh` and `Driver/build-blackhole-driver.sh` compile universal (`arm64` + `x86_64`) binaries with `MACOSX_DEPLOYMENT_TARGET=12.0`.
+
+`Scripts/build-app.sh` automatically runs `Driver/build-blackhole-driver.sh` when `.build/KKvoiceMic.driver` is not yet built, builds `KKvoiceRemoteHelper.app`, compiles the Swift package in release mode, copies the icon, helper, `KKvoiceMic.driver`, and `BlackHole-GPL-3.0.txt` into `dist/KKvoice.app`, and signs inside-out (`KKvoiceMic.driver` → `KKvoiceRemoteHelper.app` → `KKvoice.app`) using the dynamically detected local Apple signing identity (`CODESIGN_IDENTITY` override → `Developer ID Application` → `Apple Development` with `--options runtime`, falling back to `-` ad-hoc signing when no certificate is present).
 
 ## Audio driver
 
-The app routes remote PCM (or fallback Mac microphone audio) to the selected virtual device's output side. The virtual device exposes that signal as an input to Vokie and other speech applications. KKvoice expects 48 kHz stereo packed Float32 output and sends 16 kHz mono remote PCM through its bounded buffer.
+The app routes remote PCM (or fallback Mac microphone audio) to the `KKvoice Mic` (`KKvoiceMi2ch_UID`) virtual device's output side. The virtual device exposes that signal as an input to Vokie and other speech applications. KKvoice expects 48 kHz stereo packed Float32 output and sends 16 kHz mono remote PCM (or resampled Mac microphone PCM) through its bounded buffer.
 
-For releases, `Driver/build-blackhole-driver.sh` builds `KKvoiceMic.driver` directly from upstream [BlackHole](https://github.com/ExistentialAudio/BlackHole) source (GPLv3) with custom identifiers (`KKvoice Mic`, UID `KKvoiceMi2ch_UID`) and bundles it into `KKvoice.app/Contents/Resources/` for one-click in-app installation via `DriverInstaller`.
+For builds and releases, `Driver/build-blackhole-driver.sh` compiles `KKvoiceMic.driver` directly from upstream [BlackHole](https://github.com/ExistentialAudio/BlackHole) `v0.6.1` source (GPLv3) with custom identifiers (`KKvoice Mic`, UID `KKvoiceMi2ch_UID`) and bundles it into `KKvoice.app/Contents/Resources/` for automatic launch detection and one-click in-app installation via `DriverInstaller`.
 
-Legacy local-development script: `Driver/build-driver.sh` copies a locally installed `/Library/Audio/Plug-Ins/HAL/vRemoteDriver.driver` and binary-patches the copy to create `KKvoice Mic`. That script is for local development only and its output must **never** be redistributed in releases.
+Legacy local-development script: `Driver/build-driver.sh` copies a locally installed `/Library/Audio/Plug-Ins/HAL/vRemoteDriver.driver` and binary-patches the copy to create `KKvoice Mic`. That script is for historical local development only and its output must **never** be bundled or redistributed in releases.
 
-`Scripts/install-audio-driver.sh` stages a copy in `/tmp`, asks macOS for administrator authorization, installs the driver, and restarts Core Audio. This changes system-wide audio inventory and may require selecting the new input again in speech software. Do not remove the timestamped previous-driver backups without explicit reason.
+`Scripts/install-audio-driver.sh` is an optional CLI installer that stages a copy in `/tmp`, asks macOS for administrator authorization, installs the driver, and restarts Core Audio. Do not remove the timestamped previous-driver backups without explicit reason.
 
 ## Permissions and privacy
 
-- Bluetooth permission is required to pair and communicate with a remote.
-- Input Monitoring is required for global physical keyboard shortcuts.
-- Accessibility is used by the helper for supported system-level key behavior.
-- SnapNote tokens are stored only in the user's Keychain. Tests use mock values.
-- Remote audio is not written to disk. The app outputs the remote stream to the selected virtual device.
+- **Bluetooth** permission is required to pair and communicate with a remote.
+- **Input Monitoring** is required for global physical keyboard shortcuts and remote button events.
+- **Accessibility** is used by the helper for supported system-level key behavior.
+- **Microphone** permission is required only when using a physical Mac microphone as the automatic fallback source while the remote voice channel is not ready. **No microphone is ever captured while idle**; `AudioSourceRouter` / `MacMicrophoneSource` opens the selected Mac microphone only during an active keyboard-triggered recording session, streams directly to `KKvoice Mic` without writing to disk, and stops and zeroes buffers immediately when the session ends or is cancelled.
+- **SnapNote tokens** are stored only in the user's Keychain (`SnapNoteTokenStore`). On launch, `SnapNoteTokenStore.exists()` checks item existence with `kSecUseAuthenticationUISkip` and `kSecReturnData: false` so startup never triggers a Keychain password prompt. Tests use mock values.
+- Remote and fallback audio streams are never written to disk.
 - Vokie capture monitoring uses CoreAudio process/device state; it does not read Vokie note content.
 
 After changing bundle identifiers, signing, or helper packaging, previously granted macOS privacy permissions may need to be granted again in System Settings.
 
-## SnapNote integration caveat
+## SnapNote integration
 
-The implementation now exists in `KKvoiceApp.swift` and `SnapNote/`, but `SnapNote/INTEGRATION.md` describes the original planned contract and some statements there are stale. Treat source and tests as current behavior; review and update that document before relying on it as a specification. SnapNote note-focus and speech-software end-to-end behavior requires real-app testing.
+The current implementation lives in `Sources/KKvoice/KKvoiceApp.swift`, `Sources/KKvoice/AppModel.swift`, `Sources/KKvoice/UI/SnapNoteView.swift`, and `SnapNote/` (with tests in `SnapNoteTests/`). It supports user-customizable tag names (`snapNoteTagName`, 1–20 characters, defaulting to `"闪念"`) and full helper cancellation acknowledgements (`cancel_snapnote_action` / `snapnote_action_cancelled`). `SnapNote/INTEGRATION.md` documents the security boundaries and protocol contract.
 
-## Hardware validation still needed
+## Hardware validation checklist
 
-- Confirm the new `KKvoice Mic` input is selectable and receives continuous remote audio in Vokie.
+- Confirm the bundled `KKvoice Mic` input is installable from inside the app, selectable, and receives continuous remote or fallback Mac microphone audio in Vokie.
 - Verify Vokie cancel/stop detection and repeated keyboard wake/cancel cycles.
 - Test supported remote models, sleep/wake, Bluetooth reconnect, and macOS permission recovery.
 - Confirm login item and menu-bar lifecycle on a clean account.
