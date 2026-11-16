@@ -74,7 +74,7 @@ struct RemoteIllustration: View {
             height: compact ? 176 : 384
         )
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Google TV 语音遥控器")
+        .accessibilityLabel("遥控器")
     }
 
     @ViewBuilder
@@ -503,8 +503,8 @@ struct RemoteIllustration: View {
                 hoveredID = hovering ? "voice" : (hoveredID == "voice" ? nil : hoveredID)
             }
         }
-        .help("Google 助理（语音键）")
-        .accessibilityLabel("Google 助理语音键")
+        .help("语音键")
+        .accessibilityLabel("语音键")
         .accessibilityAddTraits(.isButton)
         .position(x: centerX, y: centerY)
     }

@@ -58,7 +58,7 @@ struct ButtonMappingStore {
 
 enum MappingError: LocalizedError {
     case invalid
-    var errorDescription: String? { "按键设置无效，请重新选择。" }
+    var errorDescription: String? { "按键设置无效" }
 }
 
 struct ActionOption {
@@ -71,7 +71,7 @@ enum ActionCatalog {
         .init(target: "none", label: "不操作"),
         .init(target: "arrowUp", label: "方向上"), .init(target: "arrowDown", label: "方向下"),
         .init(target: "arrowLeft", label: "方向左"), .init(target: "arrowRight", label: "方向右"),
-        .init(target: "return", label: "Enter 键"), .init(target: "escape", label: "Escape"),
+        .init(target: "return", label: "Enter"), .init(target: "escape", label: "Escape"),
         .init(target: "delete", label: "Delete"), .init(target: "tab", label: "Tab"), .init(target: "space", label: "空格"),
         .init(target: "home", label: "Home"), .init(target: "end", label: "End"),
         .init(target: "pageUp", label: "Page Up"), .init(target: "pageDown", label: "Page Down"),
@@ -80,8 +80,8 @@ enum ActionCatalog {
         .init(target: "commandV", label: "粘贴（⌘V）"), .init(target: "commandZ", label: "撤销（⌘Z）"),
         .init(target: "commandS", label: "保存（⌘S）"), .init(target: "commandW", label: "关闭窗口（⌘W）"),
         .init(target: "commandQ", label: "退出应用（⌘Q）"), .init(target: "sendEnter", label: "发送 Enter"),
-        .init(target: "cancelRecording", label: "取消收音（需手动取消转录）"), .init(target: "showDesktop", label: "显示桌面（Fn+F11）"),
-        .init(target: "appSwitcher", label: "遥控器应用切换器"), .init(target: "volumeUp", label: "系统音量＋"),
+        .init(target: "cancelRecording", label: "取消收音"), .init(target: "showDesktop", label: "显示桌面（Fn+F11）"),
+        .init(target: "appSwitcher", label: "切换应用"), .init(target: "volumeUp", label: "系统音量＋"),
         .init(target: "volumeDown", label: "系统音量－"), .init(target: "mute", label: "系统静音")
     ]
     static let modifiers = ["command", "option", "control", "shift", "fn"]
@@ -138,13 +138,13 @@ final class ButtonActionDispatcher {
          sendShortcut: @escaping (ShortcutDefinition) throws -> Void = { try SystemShortcutSender.send($0.systemShortcut) },
          cancelVoice: @escaping () -> Void, status: @escaping (String) -> Void) {
         self.mappings = mappings; self.send = send; self.sendShortcut = sendShortcut; self.cancelVoice = cancelVoice; self.status = status
-        self.createSnapNote = { status("请先配置闪念笔记。") }
+        self.createSnapNote = { status("未配置闪念笔记") }
     }
     func reset() { pressed.removeAll(); switcherActive = false }
     func deviceDisconnected() {
         if switcherActive {
             do { try send(["type": "app_switcher_cancel"]) }
-            catch { status("无法结束应用切换：\(error.localizedDescription)") }
+            catch { status("切换应用失败：\(error.localizedDescription)") }
         }
         reset()
     }
@@ -152,7 +152,7 @@ final class ButtonActionDispatcher {
     func down(_ button: String) {
         guard RemoteButton.all.contains(where: { $0.id == button }), pressed.insert(button).inserted else { return }
         let action = mappings.buttons[button] ?? .none
-        guard ActionCatalog.isValid(action) else { status("该按键设置无效。") ; return }
+        guard ActionCatalog.isValid(action) else { status("按键设置无效") ; return }
         do {
             if mappings.appSwitcherNavigation && (button == "05" || button == "06") {
                 try send(["type": "post_key", "target": button == "05" ? "appSwitcherLeft" : "appSwitcherRight"])
@@ -182,6 +182,6 @@ final class ButtonActionDispatcher {
                 if let shortcut { try sendShortcut(shortcut) }
                 else { try send(["type": "post_key", "target": action.target]) }
             }
-        } catch { status("按键动作未能发送：\(error.localizedDescription)") }
+        } catch { status("按键发送失败：\(error.localizedDescription)") }
     }
 }

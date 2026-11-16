@@ -63,12 +63,10 @@ struct ButtonMappingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             PageScaffold(
-                title: "按键映射",
-                subtitle: "点击中央遥控器按键或两侧卡片，自定义 Google TV 遥控器在 macOS 上的动作。",
+                title: "按键",
+                subtitle: nil,
                 scrollable: true
             ) {
-                statusBadge
-            } content: {
                 VStack(alignment: .leading, spacing: DS.s12) {
                     switcherBannerCard
                     mappingWorkbench
@@ -95,18 +93,7 @@ struct ButtonMappingsView: View {
         }
     }
 
-    // MARK: - Top Status Pill & Switcher Banner
-
-    @ViewBuilder
-    private var statusBadge: some View {
-        if hasUnsavedChanges {
-            StatusPill(title: "有未保存更改", tone: .warning)
-        } else if let saveFeedback {
-            StatusPill(title: saveFeedback, tone: .connected)
-        } else {
-            StatusPill(title: "已生效", tone: .connected)
-        }
-    }
+    // MARK: - Top Switcher Banner
 
     private var switcherBannerCard: some View {
         Card(padding: 10) {
@@ -124,14 +111,10 @@ struct ButtonMappingsView: View {
                     Text("左右键切换应用")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
-                    Text(
-                        draft.appSwitcherNavigation
-                            ? "已启用：按方向左 / 方向右直接唤起并浏览 macOS 应用切换器；关闭后可单独设置左右键动作。"
-                            : "已关闭：方向左与方向右可自由映射为方向键、快捷键或打开指定应用。"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    Text("方向左/右直接切换应用")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
 
                 Spacer(minLength: DS.s12)
@@ -180,84 +163,38 @@ struct ButtonMappingsView: View {
     }
 
     private var centerRemoteStage: some View {
-        VStack(spacing: DS.s8) {
-            ZStack {
-                // Soft Google-TV inspired stage aura behind the remote
-                Capsule(style: .circular)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.accentColor.opacity(0.07),
-                                Color.primary.opacity(0.03),
-                                Color.accentColor.opacity(0.04)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
+        ZStack {
+            // Soft Google-TV inspired stage aura behind the remote
+            Capsule(style: .circular)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.accentColor.opacity(0.07),
+                            Color.primary.opacity(0.03),
+                            Color.accentColor.opacity(0.04)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
-                    .frame(width: 160, height: 392)
-                    .overlay(
-                        Capsule(style: .circular)
-                            .strokeBorder(DS.border, lineWidth: 1)
-                    )
+                )
+                .frame(width: 160, height: 392)
+                .overlay(
+                    Capsule(style: .circular)
+                        .strokeBorder(DS.border, lineWidth: 1)
+                )
 
-                RemoteIllustration(
-                    highlighted: selectedButtonID,
-                    compact: false
-                ) { tappedID in
-                    withAnimation(DS.stateAnimation) {
-                        selectedButtonID = tappedID
-                    }
-                }
-                .anchorPreference(key: MappingAnchorPrefKey.self, value: .bounds) { bounds in
-                    [.init(kind: .remoteBounds, id: "remote", side: .left, bounds: bounds)]
+            RemoteIllustration(
+                highlighted: selectedButtonID,
+                compact: false
+            ) { tappedID in
+                withAnimation(DS.stateAnimation) {
+                    selectedButtonID = tappedID
                 }
             }
-
-            selectedKeyPill
-        }
-    }
-
-    private var selectedKeyPill: some View {
-        let meta = (Self.leftColumnItems + Self.rightColumnItems).first { $0.id == selectedButtonID }
-        let title = meta?.name ?? "按键"
-        let symbol = meta?.symbol ?? "keyboard"
-        let summary: String = {
-            if selectedButtonID == "voice" {
-                return "按一次开始，再按一次结束"
+            .anchorPreference(key: MappingAnchorPrefKey.self, value: .bounds) { bounds in
+                [.init(kind: .remoteBounds, id: "remote", side: .left, bounds: bounds)]
             }
-            if isSwitcherLocked(selectedButtonID) {
-                return "左右键切换应用"
-            }
-            return actionSummary(for: selectedButtonID)
-        }()
-
-        return HStack(spacing: 5) {
-            Image(systemName: symbol)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: true, vertical: false)
-            Text("·")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(summary)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(
-            Capsule(style: .continuous)
-                .fill(DS.cardBackground)
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .strokeBorder(DS.border, lineWidth: 1)
-        )
     }
 
     // MARK: - Cards
@@ -300,11 +237,10 @@ struct ButtonMappingsView: View {
                             )
                             .fixedSize(horizontal: true, vertical: false)
                     }
-                    Text("按一次开始，再按一次结束（不可映射）")
+                    Text("用于语音输入")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.82)
                 }
 
                 Spacer(minLength: 0)
@@ -341,22 +277,12 @@ struct ButtonMappingsView: View {
                     isMuted: isNone || lockedBySwitcher
                 )
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(item.name)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .layoutPriority(2)
-
-                    if lockedBySwitcher {
-                        Text("关闭上方开关后可自定义")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                }
+                Text(item.name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(2)
 
                 Spacer(minLength: 4)
 
@@ -377,7 +303,7 @@ struct ButtonMappingsView: View {
                 }
             }
         }
-        .help(lockedBySwitcher ? "已启用左右键切换应用，关闭后可自定义。" : "\(item.name)：\(actionSummary(for: item.id))")
+        .help(lockedBySwitcher ? "已用于切换应用" : "\(item.name)：\(actionSummary(for: item.id))")
         .anchorPreference(key: MappingAnchorPrefKey.self, value: .bounds) { bounds in
             [.init(kind: .cardBounds, id: item.id, side: side, bounds: bounds)]
         }
@@ -428,7 +354,7 @@ struct ButtonMappingsView: View {
             Button {
                 selectMenuOption(choice: customShortcutChoice, for: id)
             } label: {
-                let title = desired == customShortcutChoice ? "快捷键：\(action.target)" : "设置自定义快捷键…"
+                let title = desired == customShortcutChoice ? "快捷键：\(action.target)" : "自定义快捷键…"
                 if desired == customShortcutChoice {
                     Label(title, systemImage: "checkmark")
                 } else {
@@ -467,7 +393,7 @@ struct ButtonMappingsView: View {
             } label: {
                 let title = desired == typeTextChoice
                     ? "文字：\(String((action.text ?? "").prefix(24)))"
-                    : "输入文字并发送 Enter…"
+                    : "输入文字…"
                 if desired == typeTextChoice {
                     Label(title, systemImage: "checkmark")
                 } else {
@@ -479,9 +405,9 @@ struct ButtonMappingsView: View {
                 selectMenuOption(choice: snapnoteChoice, for: id)
             } label: {
                 if desired == snapnoteChoice {
-                    Label("新建闪念笔记（测试）", systemImage: "checkmark")
+                    Label("新建闪念笔记", systemImage: "checkmark")
                 } else {
-                    Text("新建闪念笔记（测试）")
+                    Text("新建闪念笔记")
                 }
             }
         } label: {
@@ -515,8 +441,8 @@ struct ButtonMappingsView: View {
                     StatusDot(tone: hasUnsavedChanges ? .warning : .connected, size: 7)
                     Text(
                         hasUnsavedChanges
-                            ? "当前有未保存的按键修改，点击「保存」后立即生效。"
-                            : (saveFeedback ?? "所有按键映射均已保存。")
+                            ? "有未保存更改"
+                            : (saveFeedback ?? "已保存")
                     )
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -527,11 +453,11 @@ struct ButtonMappingsView: View {
                 Button("恢复默认") {
                     withAnimation(DS.stateAnimation) {
                         draft = .defaults
-                        saveFeedback = "已恢复默认映射（请点击保存生效）"
+                        saveFeedback = "已恢复默认，点击保存生效"
                     }
                 }
                 .controlSize(.regular)
-                .help("将所有按键恢复为出厂默认动作")
+                .help("恢复默认")
 
                 Button("保存") {
                     saveMappings()
@@ -539,7 +465,7 @@ struct ButtonMappingsView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
                 .keyboardShortcut(.defaultAction)
-                .help("校验并保存当前按键映射")
+                .help("保存")
             }
             .padding(.horizontal, DS.s24)
             .padding(.vertical, 10)
@@ -677,7 +603,7 @@ struct ButtonMappingsView: View {
         case typeTextChoice:
             return "文字：\(String((action.text ?? "").prefix(24)))"
         case snapnoteChoice:
-            return "新建闪念笔记（测试）"
+            return "新建闪念笔记"
         default:
             return ActionCatalog.fixed.first(where: { $0.target == action.target })?.label ?? action.target
         }
@@ -717,7 +643,7 @@ struct ButtonMappingsView: View {
 
     private func promptShortcut(previous: ButtonAction?) -> ButtonAction? {
         guard model.canCaptureShortcut else {
-            showError("请先断开遥控器，再录入快捷键。完成后重新连接。")
+            showError("断开遥控器后可录制快捷键")
             return nil
         }
         let definition = previous.flatMap { action -> ShortcutDefinition? in
@@ -730,7 +656,7 @@ struct ButtonMappingsView: View {
 
     private func promptApplication() -> ButtonAction? {
         let panel = NSOpenPanel()
-        panel.message = "选择要打开的应用"
+        panel.message = "选择应用"
         panel.allowedContentTypes = [.applicationBundle]
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
@@ -741,7 +667,7 @@ struct ButtonMappingsView: View {
         var focus = false
         if ["com.openai.codex", "com.openai.chatgpt"].contains(id) {
             let alert = NSAlert()
-            alert.messageText = "打开后尝试聚焦聊天输入框？"
+            alert.messageText = "打开后自动聚焦输入框？"
             alert.addButton(withTitle: "聚焦")
             alert.addButton(withTitle: "仅打开")
             focus = alert.runModal() == .alertFirstButtonReturn
@@ -751,7 +677,7 @@ struct ButtonMappingsView: View {
 
     private func promptFile() -> ButtonAction? {
         let panel = NSOpenPanel()
-        panel.message = "选择要打开的文件"
+        panel.message = "选择文件"
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
@@ -762,7 +688,7 @@ struct ButtonMappingsView: View {
     private func promptText(previous: String?) -> ButtonAction? {
         let alert = NSAlert()
         alert.messageText = "输入文字并发送 Enter"
-        alert.informativeText = "文字会以明文保存在本机设置中。"
+        alert.informativeText = ""
         alert.addButton(withTitle: "确定")
         alert.addButton(withTitle: "取消")
         let field = NSTextField(string: previous ?? "")
@@ -771,7 +697,7 @@ struct ButtonMappingsView: View {
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
         let action = ButtonAction(target: "typeText", text: field.stringValue)
         guard ActionCatalog.isValid(action) else {
-            showError("请输入不超过 128 个字符的单行文字。")
+            showError("限 128 字内单行文字")
             return nil
         }
         return action
