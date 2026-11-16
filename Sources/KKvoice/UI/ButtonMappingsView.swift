@@ -45,10 +45,15 @@ struct ButtonMappingsView: View {
         .init(id: "11", name: "信源", symbol: "display", isFixedVoice: false)
     ]
 
+    private static func normalizeButtonID(_ raw: String?) -> String? {
+        guard let raw, !raw.isEmpty else { return nil }
+        return raw.lowercased() == "voice" ? "voice" : raw.uppercased()
+    }
+
     init(model: AppModel) {
         self.model = model
         self._draft = State(initialValue: model.mappings)
-        self._selectedButtonID = State(initialValue: model.lastPressedButtonID?.uppercased() ?? "07")
+        self._selectedButtonID = State(initialValue: Self.normalizeButtonID(model.lastPressedButtonID) ?? "07")
     }
 
     private var hasUnsavedChanges: Bool {
@@ -74,7 +79,7 @@ struct ButtonMappingsView: View {
         }
         .background(DS.windowBackground)
         .onAppear {
-            if let id = model.lastPressedButtonID?.uppercased() {
+            if let id = Self.normalizeButtonID(model.lastPressedButtonID) {
                 selectedButtonID = id
             }
         }
@@ -82,7 +87,7 @@ struct ButtonMappingsView: View {
             draft = newValue
         }
         .onChange(of: model.lastPressedButtonID) { newValue in
-            if let id = newValue?.uppercased() {
+            if let id = Self.normalizeButtonID(newValue) {
                 withAnimation(DS.stateAnimation) {
                     selectedButtonID = id
                 }
@@ -343,7 +348,7 @@ struct ButtonMappingsView: View {
                         .layoutPriority(2)
 
                     if lockedBySwitcher {
-                        Text("已启用切换应用，关闭后可自定义")
+                        Text("关闭上方开关后可自定义")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
