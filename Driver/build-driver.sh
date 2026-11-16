@@ -1,4 +1,7 @@
 #!/bin/zsh
+# LOCAL DEVELOPMENT ONLY — DO NOT USE FOR RELEASES.
+# This legacy script binary-patches a locally installed vRemoteDriver.driver.
+# For redistributable builds and releases, use Driver/build-blackhole-driver.sh instead.
 set -euo pipefail
 root="${0:A:h:h}"
 source="/Library/Audio/Plug-Ins/HAL/vRemoteDriver.driver"
