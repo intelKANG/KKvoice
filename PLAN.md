@@ -1,7 +1,7 @@
 # KKvoice：macOS 独立版计划
 
 > [!NOTE]
-> **文档说明（v0.2.2 实际演进状态）**：本文档记录了 KKvoice 从早期插件迁移为独立 macOS 应用时的初始规划背景。当前发布的 **`v0.2.2`** 已在此基础上完成以下核心演进：
+> **文档说明（v1.0.0 实际演进状态）**：本文档记录了 KKvoice 从早期插件迁移为独立 macOS 应用时的初始规划背景。当前发布的 **`v1.0.0`** 正式版已在此基础上完成以下核心演进：
 > 1. **全新 SwiftUI 五页界面（macOS 13.0+）**：替代早期 AppKit 设置窗口，提供「连接、按键、快速笔记、通用、关于」五页工作台、遥控器插画式按键映射（语音键默认同时支持短按切换与长按说话）及浅色/深色/跟随系统外观切换。
 > 2. **音源自动回退与零功耗离线待机**：早期规划仅使用遥控器麦克风；现已新增 `AudioSourceRouter` 与系统 HID 挂载门禁 + 有界蓝牙搜索窗口（`remote_standby`）——遥控器未连接时按键盘触发键会自动按需采集所选「其他收音设备」（内置麦、外接麦或无线麦）写入 `KKvoice Mic`（待机仍绝不采集任何麦克风），带 MacBook 外出时自动停止蓝牙扫描进入零功耗被动待机，回家按遥控器任意键通过系统 HID 事件瞬间重连。
 > 3. **内置 BlackHole 源码编译驱动、豆包输入法适配与一键安装/卸载**：通过 `Driver/build-blackhole-driver.sh` 直接从上游 BlackHole `v0.6.1`（GPLv3）源码编译 `KKvoiceMic.driver`（UID `KKvoiceMi2ch_UID`，并将传输类型设为 `kAudioDeviceTransportTypeUSB` 以原生兼容豆包输入法 `AVCaptureDevice` 麦克风枚举）内置于应用包，支持启动自动检测安装、驱动卸载及一键「完全卸载 KKvoice」，全套组件均使用 Apple 开发者证书 + Hardened Runtime 签名。

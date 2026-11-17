@@ -694,7 +694,7 @@ public final class AppUpdater: ObservableObject {
            let short = dict["CFBundleShortVersionString"] as? String {
             return short.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        return "0.2.2"
+        return "1.0.0"
     }
 
     @Sendable

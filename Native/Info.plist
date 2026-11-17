@@ -7,8 +7,8 @@
 <key>CFBundleDisplayName</key><string>KKvoice</string>
 <key>CFBundleIconFile</key><string>KKvoice</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.2.2</string>
-<key>CFBundleVersion</key><string>4</string>
+<key>CFBundleShortVersionString</key><string>1.0.0</string>
+<key>CFBundleVersion</key><string>5</string>
 <key>LSMinimumSystemVersion</key><string>12.0</string>
 <key>NSBluetoothAlwaysUsageDescription</key><string>连接 Chromecast 遥控器。</string>
 <key>NSMicrophoneUsageDescription</key><string>未连接遥控器时使用其他收音设备收音。</string>
