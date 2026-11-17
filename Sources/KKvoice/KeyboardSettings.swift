@@ -26,10 +26,9 @@ struct KeyboardSettings {
     }
 
     func wakeDefinition() -> ShortcutDefinition? {
-        guard let raw = defaults.string(forKey: wakeKey) else {
-            return ShortcutDefinition(keyName: Self.defaultKeyName)
+        guard let raw = defaults.string(forKey: wakeKey), raw != Self.disabledValue else {
+            return nil
         }
-        if raw == Self.disabledValue { return nil }
         guard let result = ShortcutDefinition(encoded: raw) ?? ShortcutDefinition(keyName: raw),
               result.supportedByLegacyKeyboardTrigger else { return nil }
         return result
@@ -48,7 +47,7 @@ struct KeyboardSettings {
     func saveWake(selection: Int, choices: [InputShortcut]) {
         let index = selection - 1
         if choices.indices.contains(index) { defaults.set(choices[index].helperKey, forKey: wakeKey) }
-        else { defaults.set(Self.disabledValue, forKey: wakeKey) }
+        else { defaults.removeObject(forKey: wakeKey) }
     }
 
     func saveInput(selection: Int, choices: [InputShortcut]) {

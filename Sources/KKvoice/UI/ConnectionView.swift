@@ -736,7 +736,7 @@ struct ConnectionView: View {
 
                 LabeledRow(
                     "键盘触发键（可选）",
-                    subtitle: "用电脑键盘代替遥控器语音键触发收音",
+                    subtitle: "用电脑键盘激活遥控器，使遥控器作为麦克风收音",
                     systemImage: "command.square"
                 ) {
                     Menu {
@@ -891,7 +891,7 @@ private struct IMEOnboardingGuideSheet: View {
                 guideSection(
                     step: "3",
                     title: "核对触发快捷键",
-                    detail: "确保 KKvoice「连接」页中的「语音软件快捷键」与你在输入法内设置的快捷键一致（默认均为 Fn）。"
+                    detail: "确保 KKvoice「连接」页中的「语音软件快捷键」与你在输入法内设置的快捷键一致（默认为 Fn）。「键盘触发键（可选）」默认关闭，完成输入法设置后可按需开启。"
                 )
             }
 

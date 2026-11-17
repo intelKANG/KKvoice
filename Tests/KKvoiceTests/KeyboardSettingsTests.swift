@@ -9,9 +9,9 @@ final class KeyboardSettingsTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let first = KeyboardSettings(defaults: defaults)
         let choices = InputShortcut.choices
-        XCTAssertEqual(first.wakeSelection(choices: choices), 1)
+        XCTAssertEqual(first.wakeSelection(choices: choices), 0)
         XCTAssertEqual(first.inputSelection(choices: choices), 0)
-        XCTAssertEqual(first.wakeDefinition()?.keyName, "Fn")
+        XCTAssertNil(first.wakeDefinition())
         XCTAssertEqual(first.inputDefinition().keyName, "Fn")
         first.saveWake(selection: 1, choices: choices)
         first.saveInput(selection: 2, choices: choices)
