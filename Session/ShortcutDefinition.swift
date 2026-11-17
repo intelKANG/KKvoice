@@ -33,19 +33,26 @@ public struct ShortcutDefinition: Equatable, Codable {
         let code: CGKeyCode
         let flag: CGEventFlags
     }
+    private static let genericModifierMask: UInt64 =
+        CGEventFlags.maskCommand.rawValue |
+        CGEventFlags.maskAlternate.rawValue |
+        CGEventFlags.maskControl.rawValue |
+        CGEventFlags.maskShift.rawValue |
+        CGEventFlags.maskSecondaryFn.rawValue
+
     private static let modifierSpecs: [String: ModifierSpec] = [
-        "command":.init(canonical:"command",code:0x37,flag:.maskCommand),
-        "leftcommand":.init(canonical:"leftCommand",code:0x37,flag:.maskCommand),
-        "rightcommand":.init(canonical:"rightCommand",code:0x36,flag:.maskCommand),
-        "option":.init(canonical:"option",code:0x3A,flag:.maskAlternate),
-        "leftoption":.init(canonical:"leftOption",code:0x3A,flag:.maskAlternate),
-        "rightoption":.init(canonical:"rightOption",code:0x3D,flag:.maskAlternate),
-        "control":.init(canonical:"control",code:0x3B,flag:.maskControl),
-        "leftcontrol":.init(canonical:"leftControl",code:0x3B,flag:.maskControl),
-        "rightcontrol":.init(canonical:"rightControl",code:0x3E,flag:.maskControl),
-        "shift":.init(canonical:"shift",code:0x38,flag:.maskShift),
-        "leftshift":.init(canonical:"leftShift",code:0x38,flag:.maskShift),
-        "rightshift":.init(canonical:"rightShift",code:0x3C,flag:.maskShift),
+        "command":.init(canonical:"command",code:0x37,flag:CGEventFlags(rawValue: CGEventFlags.maskCommand.rawValue | 0x0008)),
+        "leftcommand":.init(canonical:"leftCommand",code:0x37,flag:CGEventFlags(rawValue: CGEventFlags.maskCommand.rawValue | 0x0008)),
+        "rightcommand":.init(canonical:"rightCommand",code:0x36,flag:CGEventFlags(rawValue: CGEventFlags.maskCommand.rawValue | 0x0010)),
+        "option":.init(canonical:"option",code:0x3A,flag:CGEventFlags(rawValue: CGEventFlags.maskAlternate.rawValue | 0x0020)),
+        "leftoption":.init(canonical:"leftOption",code:0x3A,flag:CGEventFlags(rawValue: CGEventFlags.maskAlternate.rawValue | 0x0020)),
+        "rightoption":.init(canonical:"rightOption",code:0x3D,flag:CGEventFlags(rawValue: CGEventFlags.maskAlternate.rawValue | 0x0040)),
+        "control":.init(canonical:"control",code:0x3B,flag:CGEventFlags(rawValue: CGEventFlags.maskControl.rawValue | 0x0001)),
+        "leftcontrol":.init(canonical:"leftControl",code:0x3B,flag:CGEventFlags(rawValue: CGEventFlags.maskControl.rawValue | 0x0001)),
+        "rightcontrol":.init(canonical:"rightControl",code:0x3E,flag:CGEventFlags(rawValue: CGEventFlags.maskControl.rawValue | 0x2000)),
+        "shift":.init(canonical:"shift",code:0x38,flag:CGEventFlags(rawValue: CGEventFlags.maskShift.rawValue | 0x0002)),
+        "leftshift":.init(canonical:"leftShift",code:0x38,flag:CGEventFlags(rawValue: CGEventFlags.maskShift.rawValue | 0x0002)),
+        "rightshift":.init(canonical:"rightShift",code:0x3C,flag:CGEventFlags(rawValue: CGEventFlags.maskShift.rawValue | 0x0004)),
         "fn":.init(canonical:"fn",code:0x3F,flag:.maskSecondaryFn)
     ]
     private static let modifierKeys: Set<String> = ["LeftCommand","RightCommand","LeftOption","RightOption","LeftControl","RightControl","LeftShift","RightShift","Fn"]
@@ -56,7 +63,7 @@ public struct ShortcutDefinition: Equatable, Codable {
         var specs: [ModifierSpec] = []
         for name in modifiers {
             guard let spec = Self.modifierSpecs[name.lowercased()],
-                  !specs.contains(where: { $0.flag == spec.flag }) else { return nil }
+                  !specs.contains(where: { ($0.flag.rawValue & Self.genericModifierMask) == (spec.flag.rawValue & Self.genericModifierMask) }) else { return nil }
             specs.append(spec)
         }
         // A standalone modifier is supported, but not a modifier plus another

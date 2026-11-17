@@ -88,7 +88,8 @@ do {
     let shortcut = SystemShortcut(modifiers: [.leftControl], key: nil)!
     expect(shortcut.events.count == 2, "left control pair")
     expect(shortcut.events[0].keyCode == 0x3B && shortcut.events[0].isDown && shortcut.events[0].flags.contains(.maskControl), "left control down")
-    expect(shortcut.events[1].keyCode == 0x3B && !shortcut.events[1].isDown && !shortcut.events[1].flags.contains(.maskControl), "left control up")
+    expect((shortcut.events[0].flags.rawValue & 0x0001) == 0x0001, "left control includes IOKit device-side flag for WeType")
+    expect(shortcut.events[1].keyCode == 0x3B && !shortcut.events[1].isDown && shortcut.events[1].flags.isEmpty, "left control up")
     expect(SystemShortcut(modifiers: [], key: nil) == nil, "empty shortcut invalid")
     expect(SystemShortcut(modifiers: [.leftControl, .leftControl], key: nil) == nil, "duplicate modifiers invalid")
     expect(SystemShortcut(modifiers: [.leftControl], key: 0x3B) == nil, "modifier as main key invalid")

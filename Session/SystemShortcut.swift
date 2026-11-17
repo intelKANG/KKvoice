@@ -2,17 +2,28 @@ import Foundation
 import CoreGraphics
 import ApplicationServices
 
-/// Explicit sides matter: Vokie can distinguish left Control (0x3B).
+/// Explicit sides matter: Vokie and WeType distinguish left/right modifiers via keyCode + IOKit device-side flag bits.
 public struct SystemShortcut {
+    private static let genericModifierMask: UInt64 =
+        CGEventFlags.maskCommand.rawValue |
+        CGEventFlags.maskAlternate.rawValue |
+        CGEventFlags.maskControl.rawValue |
+        CGEventFlags.maskShift.rawValue |
+        CGEventFlags.maskSecondaryFn.rawValue
+
     public struct Modifier: Equatable {
         public let keyCode: CGKeyCode
         public let flag: CGEventFlags
         public init(keyCode: CGKeyCode, flag: CGEventFlags) { self.keyCode = keyCode; self.flag = flag }
-        public static let leftControl = Modifier(keyCode: 0x3B, flag: .maskControl)
-        public static let rightControl = Modifier(keyCode: 0x3E, flag: .maskControl)
-        public static let leftOption = Modifier(keyCode: 0x3A, flag: .maskAlternate)
-        public static let leftCommand = Modifier(keyCode: 0x37, flag: .maskCommand)
-        public static let leftShift = Modifier(keyCode: 0x38, flag: .maskShift)
+        public static let leftControl = Modifier(keyCode: 0x3B, flag: CGEventFlags(rawValue: CGEventFlags.maskControl.rawValue | 0x0001))
+        public static let rightControl = Modifier(keyCode: 0x3E, flag: CGEventFlags(rawValue: CGEventFlags.maskControl.rawValue | 0x2000))
+        public static let leftOption = Modifier(keyCode: 0x3A, flag: CGEventFlags(rawValue: CGEventFlags.maskAlternate.rawValue | 0x0020))
+        public static let rightOption = Modifier(keyCode: 0x3D, flag: CGEventFlags(rawValue: CGEventFlags.maskAlternate.rawValue | 0x0040))
+        public static let leftCommand = Modifier(keyCode: 0x37, flag: CGEventFlags(rawValue: CGEventFlags.maskCommand.rawValue | 0x0008))
+        public static let rightCommand = Modifier(keyCode: 0x36, flag: CGEventFlags(rawValue: CGEventFlags.maskCommand.rawValue | 0x0010))
+        public static let leftShift = Modifier(keyCode: 0x38, flag: CGEventFlags(rawValue: CGEventFlags.maskShift.rawValue | 0x0002))
+        public static let rightShift = Modifier(keyCode: 0x3C, flag: CGEventFlags(rawValue: CGEventFlags.maskShift.rawValue | 0x0004))
+        public static let fn = Modifier(keyCode: 0x3F, flag: .maskSecondaryFn)
     }
     public struct Event: Equatable {
         public let keyCode: CGKeyCode
@@ -25,7 +36,7 @@ public struct SystemShortcut {
     public init?(modifiers: [Modifier], key: CGKeyCode?) {
         guard key != nil || !modifiers.isEmpty,
               Set(modifiers.map(\.keyCode)).count == modifiers.count,
-              Set(modifiers.map { $0.flag.rawValue }).count == modifiers.count,
+              Set(modifiers.map { $0.flag.rawValue & Self.genericModifierMask }).count == modifiers.count,
               !modifiers.contains(where: { $0.keyCode == key }) else { return nil }
         self.modifiers = modifiers; self.key = key
     }

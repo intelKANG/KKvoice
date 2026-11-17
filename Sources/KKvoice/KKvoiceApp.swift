@@ -71,6 +71,7 @@ final class KKvoiceAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         if model.checkAndPromptDriverOnLaunch() {
             model.connect()
         }
+        model.presentOnboardingGuideIfNeeded()
         model.updater.scheduleLaunchCheckIfNeeded(delaySeconds: 3.0)
     }
 

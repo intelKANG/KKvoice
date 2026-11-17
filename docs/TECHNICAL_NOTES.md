@@ -24,11 +24,15 @@ KKvoice 内部将语音软件统一视为**「按一下开始，再按一下结�
 3. **情况 B：用户长按（按住说话 `≥ 0.5s` 后松开语音键）**：
    - `VoiceSession` 检测到从按下到松开的持续时间 `≥ 0.5s`，在用户松开手指的瞬间直接触发收音结束流程，并注入**第 2 次**快捷键脉冲通知语音输入法**结束录音**。
 
-对于语音输入法而言，无论你是“短按两次”还是“长按一次松手”，它收到的永远是标准的「开始脉冲 $\rightarrow$ 音频流 $\rightarrow$ 结束脉冲」，因此无需在输入法内切换模式即可同时支持两种手势。
+对于语音输入法而言，无论你是“短按两次”还是“长按一次松手”，它收到的永远是标准的「开始脉冲 $\rightarrow$ 音频流 $\rightarrow$ 结束脉冲」，因此**用户只需在输入法中开启「免按/点按开始结束」模式，即可在遥控器上同时获得短按与长按两种体验**。
+
+更重要的是，这种设计避免了在说话期间向 macOS 系统长时间按死修饰键（如 `Control` 或 `Option`）带来的副作用——如果长按修饰键不放，说话期间点击鼠标左键会变成右键菜单、滚轮会变成缩放，且容易触发输入法的防误触取消机制。
 
 ---
 
-## 2. 为什么豆包输入法默认找不到普通虚拟声卡？
+## 2. 豆包输入法与微信输入法的底层兼容细节
+
+### 2.1 为什么豆包输入法默认找不到普通虚拟声卡？
 
 许多 macOS 语音工具使用标准的 CoreAudio 虚拟声卡（如原版 BlackHole），但在**豆包输入法**的麦克风下拉列表中却完全看不到该设备，或者选中后录不到声音。
 
@@ -42,6 +46,18 @@ KKvoice 内部将语音软件统一视为**「按一下开始，再按一下结�
    - 在编译脚本 `Driver/build-blackhole-driver.sh` 中，将 `kAudioDevicePropertyTransportType` 的返回值从 `kAudioDeviceTransportTypeVirtual` 修改为 **`kAudioDeviceTransportTypeUSB`（`'usb '`）**，使基于 `AVCaptureDevice` 的输入法将其识别为标准外接 USB 麦克风并正常列出。
 2. **会话启动自动解静音与满幅音量**：
    - 每次开始收音时，`KKCoreAudioOutput`（`ensureUnmutedFullVolume`）会自动检查并解除 `KKvoice Mic` 输入/输出端的主通道与分通道静音，同时将音量标量重置为 `1.0`（100%）。
+
+### 2.2 为什么微信输入法对模拟修饰键更挑剔（IOKit 左右侧硬件位校验）？
+当用户将快捷键设为 `左 Control`（`0x3B`）、`右 Control`（`0x3E`）或 `左/右 Option` 等修饰键时：
+- **豆包输入法**主要检查 `CGEventFlags` 的通用修饰键掩码（如 `.maskControl = 0x40000`）；
+- **微信输入法（`WeType`）** 的 `ShortcutKeyMonitor.handleFlagsChanged` 则直接按 `keyCode` 校验底层 IOKit 的**设备侧专属标志位（Device-dependent side flags）**：
+  - `LeftControl (0x3B)`：`0x0001`（`NX_DEVICELCTLKEYMASK`）
+  - `RightControl (0x3E)`：`0x2000`（`NX_DEVICERCTLKEYMASK`）
+  - `LeftShift (0x38)` / `RightShift (0x3C)`：`0x0002` / `0x0004`
+  - `LeftCommand (0x37)` / `RightCommand (0x36)`：`0x0008` / `0x0010`
+  - `LeftOption (0x3A)` / `RightOption (0x3D)`：`0x0020` / `0x0040`
+- 如果合成的 `kCGEventFlagsChanged` 事件仅设置了通用位 `0x40000` 而未携带 `0x0001`，微信输入法会判定 `flags & 0x0001 == 0`，把“按下”事件误判为“释放”事件而完全忽略。
+- 因此，`SystemShortcut` 与 `ShortcutDefinition` 在构造修饰键事件时，同时写入了通用掩码与对应的 IOKit 硬件侧标志位（如 `LeftControl = 0x40001`），使其与真实物理键盘产生的中断事件完全一致。
 
 ---
 

@@ -185,6 +185,7 @@ final class AppModel: ObservableObject {
     @Published var isRemoteInStandby: Bool = false
     @Published var hasEverConnectedRemote: Bool = false
     @Published var showManualPairingGuide: Bool = false
+    @Published var showIMEOnboardingGuide: Bool = false
     @Published var isRecording: Bool = false
     @Published var recordingFrames: Int = 0
     @Published var requiredPermission: String? = nil
@@ -254,6 +255,7 @@ final class AppModel: ObservableObject {
     let snapNoteMCPPortKey = "snapNoteMCPPort"
     let showMenuBarIconKey = "showMenuBarIcon"
     let hasEverConnectedRemoteKey = "hasEverConnectedRemote"
+    let hasSeenIMEOnboardingGuideKey = "hasSeenIMEOnboardingGuide"
     private let mappingStore = ButtonMappingStore()
     private lazy var buttonDispatcher = ButtonActionDispatcher(
         mappings: mappings,
@@ -698,6 +700,7 @@ final class AppModel: ObservableObject {
                     self.snapNoteMCPPortKey,
                     self.showMenuBarIconKey,
                     self.hasEverConnectedRemoteKey,
+                    self.hasSeenIMEOnboardingGuideKey,
                     "appAppearanceMode",
                     "buttonMappings.v1",
                     "selectedMacMicUID",
@@ -741,6 +744,17 @@ final class AppModel: ObservableObject {
             installDriver(reinstall: false, autoConnectAfterInstall: true)
         }
         return false
+    }
+
+    func presentOnboardingGuideIfNeeded() {
+        if !UserDefaults.standard.bool(forKey: hasSeenIMEOnboardingGuideKey) {
+            showIMEOnboardingGuide = true
+        }
+    }
+
+    func dismissIMEOnboardingGuide() {
+        UserDefaults.standard.set(true, forKey: hasSeenIMEOnboardingGuideKey)
+        showIMEOnboardingGuide = false
     }
 
     func deviceDisplayTitle(_ device: KKAudioOutputDevice) -> String {

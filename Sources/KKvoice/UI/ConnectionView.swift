@@ -29,6 +29,9 @@ struct ConnectionView: View {
                 .frame(maxWidth: .infinity)
             }
         }
+        .sheet(isPresented: $model.showIMEOnboardingGuide) {
+            IMEOnboardingGuideSheet(model: model)
+        }
     }
 
     private var heroStageTone: StatusTone {
@@ -703,7 +706,7 @@ struct ConnectionView: View {
 
                 LabeledRow(
                     "语音软件快捷键",
-                    subtitle: "需与豆包 / Vokie 等软件内的快捷键一致",
+                    subtitle: "需与输入法「免按 / 点按开始结束」快捷键一致",
                     systemImage: "bolt.horizontal.circle"
                 ) {
                     Menu {
@@ -759,18 +762,24 @@ struct ConnectionView: View {
                     .disabled(model.isControlsLocked)
                 }
 
-                HStack(alignment: .center, spacing: 6) {
+                HStack(alignment: .center, spacing: 8) {
                     Image(systemName: "info.circle.fill")
                         .font(.caption)
                         .foregroundStyle(Color.accentColor)
 
-                    Text("提示：请在语音输入软件（豆包 / Vokie 等）中将麦克风设为「KKvoice Mic」；若停用或卸载本软件，请改回「系统默认」。")
+                    Text("请在输入法中将麦克风选为「KKvoice Mic」（停用或卸载后改回「系统默认」），并开启「免按 / 启动语音输入」模式。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Spacer(minLength: 0)
+                    Spacer(minLength: 4)
+
+                    Button("引导说明") {
+                        model.showIMEOnboardingGuide = true
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
@@ -812,5 +821,129 @@ struct GoogleAssistantDotsView: View {
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
+    }
+}
+
+private struct IMEOnboardingGuideSheet: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                Image(systemName: "mic.badge.plus")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 44, height: 44)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.accentColor.opacity(0.12))
+                    )
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("语音输入法设置引导")
+                        .font(.title3.bold())
+                    Text("首次使用请按以下两步检查你常用的语音输入法设置")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 12) {
+                guideSection(
+                    step: "1",
+                    title: "将输入法麦克风设为「KKvoice Mic」",
+                    detail: "在豆包输入法 / 微信输入法 / Vokie 的设置中，将麦克风设备选择为「KKvoice Mic」。若日后停用或卸载 KKvoice，请手动改回「系统默认」。"
+                )
+
+                guideSection(
+                    step: "2",
+                    title: "开启各输入法的「免按 / 免提」模式",
+                    detail: "只需在输入法中开启下方模式，KKvoice 会自动让遥控器同时支持「短按一下切换」与「按住说话、松开结束」两种按法："
+                )
+
+                VStack(alignment: .leading, spacing: 8) {
+                    appRuleRow(
+                        app: "豆包输入法",
+                        rule: "语音输入 → 点击设置「免按模式」，「全局唤起语音」设置为「持续模式」。"
+                    )
+                    appRuleRow(
+                        app: "微信输入法",
+                        rule: "语音输入 → 快捷键 → 选「启动语音输入」，关闭「按住说话」，启用「快捷键全局生效」。"
+                    )
+                    appRuleRow(
+                        app: "Vokie",
+                        rule: "设置 → 通用 → 修改快捷键 → 打开「免提」模式。"
+                    )
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(DS.subtleFill)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(DS.border, lineWidth: 1)
+                )
+
+                guideSection(
+                    step: "3",
+                    title: "核对触发快捷键",
+                    detail: "确保 KKvoice「连接」页中的「语音软件快捷键」与你在输入法内设置的快捷键一致（默认均为 Fn）。"
+                )
+            }
+
+            HStack {
+                Text("后续可随时在「连接」页右下角点击「引导说明」再次查看")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button("我知道了") {
+                    model.dismissIMEOnboardingGuide()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding(.top, 4)
+        }
+        .padding(24)
+        .frame(width: 520)
+    }
+
+    private func guideSection(step: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(step)
+                .font(.caption.bold())
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(Color.accentColor))
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func appRuleRow(app: String, rule: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("• \(app)：")
+                .font(.footnote.weight(.semibold))
+                .frame(width: 82, alignment: .leading)
+            Text(rule)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
