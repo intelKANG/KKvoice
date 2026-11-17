@@ -22,8 +22,6 @@ The bundled `KKvoice Mic` virtual audio HAL driver (`KKvoice.app/Contents/Resour
   - `BlackHole/BlackHole.c`: `kAudioDeviceTransportTypeVirtual` replaced with `kAudioDeviceTransportTypeUSB` so `AVCaptureDevice`-based speech applications (such as Doubao Input Method) discover `KKvoice Mic` as a selectable audio input.
 - **Corresponding source**: The complete corresponding source code for `KKvoiceMic.driver` consists of the unmodified upstream `ExistentialAudio/BlackHole` source tree at tag `v0.6.1` together with our build script `Driver/build-blackhole-driver.sh` in this repository.
 
-> **Note on `Driver/build-driver.sh` (local development only)**: The legacy script `Driver/build-driver.sh` binary-patches a locally installed `vRemoteDriver.driver` for local development convenience only. Its output is **never** bundled into `KKvoice.app` or redistributed in releases.
-
 ---
 
 ## 2. Native helper (`KKvoiceRemoteHelper`)

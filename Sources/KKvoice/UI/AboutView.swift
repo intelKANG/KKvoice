@@ -138,7 +138,7 @@ struct AboutView: View {
 
                 LabeledRow(
                     "vRemoter",
-                    subtitle: "遥控器与音频驱动参考",
+                    subtitle: "遥控器协议参考",
                     systemImage: "appletvremote.gen4"
                 ) {
                     Button {

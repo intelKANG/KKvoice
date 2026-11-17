@@ -7,7 +7,7 @@
 - `Session`: deterministic capture state machine (default `.hybrid` gesture supporting both tap-to-toggle and hold-to-talk), shortcut relay, and physical-key coordination.
 - `Audio`: CoreAudio output to the selected virtual device (automatically unmuting and restoring full scalar volume on session start), physical audio input device fallback relay (`MacMicrophoneSource`), PCM conversion, buffering, and session isolation.
 - `SnapNote`: local/LAN MCP client (supporting configurable endpoint URL & port), Keychain token store, action coordinator, and helper cancellation adapter.
-- `Driver`: BlackHole-based `KKvoice Mic` HAL driver build script (`Driver/build-blackhole-driver.sh`), legacy local-dev patch script (`Driver/build-driver.sh`), and privileged installer.
+- `Driver`: BlackHole-based `KKvoice Mic` HAL driver build script (`Driver/build-blackhole-driver.sh`) and privileged installer.
 - `*Tests` and `Tests/KKvoiceTests`: hardware-free regression tests (33 XCTest unit tests in `Tests/KKvoiceTests` plus 5 standalone `*Tests/run.sh` suites).
 
 Keep the remote protocol in the helper process and keep state transitions in the hardware-independent `Session` module. Do not move CoreAudio callbacks, BLE callbacks, or keychain access onto real-time audio or event-tap paths. Preserve third-party notices and do not commit credentials, personal notes, build products, local app bundles, or signing material.
@@ -55,7 +55,7 @@ The app routes remote PCM (or fallback physical input device audio) to the `KKvo
 
 For builds and releases, `Driver/build-blackhole-driver.sh` compiles `KKvoiceMic.driver` directly from upstream [BlackHole](https://github.com/ExistentialAudio/BlackHole) `v0.6.1` source (GPLv3) with custom identifiers (`KKvoice Mic`, UID `KKvoiceMi2ch_UID`) and patches `kAudioDevicePropertyTransportType` from `kAudioDeviceTransportTypeVirtual` to `kAudioDeviceTransportTypeUSB` (`'usb '`) so `AVCaptureDevice`-based speech apps (such as Doubao Input Method) list `KKvoice Mic` as a selectable microphone. `DriverInstaller` provides one-click in-app installation, reinstallation, driver uninstallation (removing both `KKvoiceMic.driver` and any `.previous*` backups), and full app uninstallation.
 
-Legacy local-development script: `Driver/build-driver.sh` copies a locally installed `/Library/Audio/Plug-Ins/HAL/vRemoteDriver.driver` and binary-patches the copy to create `KKvoice Mic`. That script is for historical local development only and its output must **never** be bundled or redistributed in releases.
+See [docs/TECHNICAL_NOTES.md](docs/TECHNICAL_NOTES.md) for deep-dive engineering notes on the dual-mode voice gesture state machine, `kCGHIDEventTap` head-order guard, and Bluetooth HID pairing gate.
 
 ## Permissions and privacy
 
