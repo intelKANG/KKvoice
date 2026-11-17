@@ -842,7 +842,7 @@ private struct IMEOnboardingGuideSheet: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("语音输入法设置引导")
                         .font(.title3.bold())
-                    Text("首次使用请按以下两步检查你常用的语音输入法设置")
+                    Text("已适配豆包输入法、微信输入法、Vokie、Typeless（其他软件大概率兼容但未做专门测试）")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -854,7 +854,7 @@ private struct IMEOnboardingGuideSheet: View {
                 guideSection(
                     step: "1",
                     title: "将输入法麦克风设为「KKvoice Mic」",
-                    detail: "在豆包输入法 / 微信输入法 / Vokie 的设置中，将麦克风设备选择为「KKvoice Mic」。若日后停用或卸载 KKvoice，请手动改回「系统默认」。"
+                    detail: "在豆包输入法 / 微信输入法 / Vokie / Typeless 的设置中，将麦克风设备选择为「KKvoice Mic」。若日后停用或卸载 KKvoice，请手动改回「系统默认」。"
                 )
 
                 guideSection(
@@ -875,6 +875,10 @@ private struct IMEOnboardingGuideSheet: View {
                     appRuleRow(
                         app: "Vokie",
                         rule: "设置 → 通用 → 修改快捷键 → 打开「免提」模式。"
+                    )
+                    appRuleRow(
+                        app: "Typeless",
+                        rule: "目前已适配语音输入功能，开启单击开始/结束语音输入的快捷键模式即可。"
                     )
                 }
                 .padding(12)

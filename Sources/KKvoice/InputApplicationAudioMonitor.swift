@@ -6,7 +6,8 @@ enum InputApplicationAudioMonitor {
     private static let monitoredBundlePrefixes = [
         "com.vokie.desktop",
         "com.bytedance.inputmethod.doubaoime",
-        "com.tencent.inputmethod.wetype"
+        "com.tencent.inputmethod.wetype",
+        "now.typeless.desktop"
     ]
 
     static func isMonitoredInputAppBundle(_ bundle: String) -> Bool {
