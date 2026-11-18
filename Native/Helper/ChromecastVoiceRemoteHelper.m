@@ -59,7 +59,6 @@ static void Log(NSString *message) {
 @property(nonatomic, assign) IOHIDManagerRef hidManager;
 @property(nonatomic, assign) CFMachPortRef eventTap;
 @property(nonatomic, assign) CFRunLoopSourceRef eventTapSource;
-@property(nonatomic, strong) NSTimer *tapOrderGuardTimer;
 @property(nonatomic, assign) NSInteger capsVersion;
 @property(nonatomic, assign) NSInteger codec;
 @property(nonatomic, assign) NSInteger frameSize;
@@ -147,6 +146,10 @@ static void Log(NSString *message) {
 - (void)rememberChromecastPeripheral:(CBPeripheral *)peripheral;
 - (void)connectPeripheral:(CBPeripheral *)peripheral;
 - (void)retryScan;
+- (void)teardownKeyboardTap;
+- (void)restartKeyboardTap;
+- (void)startTapOrderGuard;
+- (void)stopTapOrderGuard;
 @end
 
 static void HIDInputReportCallback(
@@ -198,7 +201,7 @@ static CGEventRef KeyboardEventCallback(
 - (instancetype)init {
     self = [super init];
     if (!self) return nil;
-    _keyboardConfig = @{@"enabled": @YES, @"key": @"Fn", @"modifiers": @[], @"captureCancelOnly": @NO};
+    _keyboardConfig = @{@"enabled": @NO, @"key": @"Fn", @"modifiers": @[], @"captureCancelOnly": @NO};
     _buttonMappings = @{};
     _central = [[CBCentralManager alloc] initWithDelegate:self queue:dispatch_get_main_queue()];
     [self startInputReader];
@@ -301,7 +304,18 @@ static CGEventRef KeyboardEventCallback(
         if (self.escapeCancelActive != enabled) {
             self.escapeCancelActive = enabled;
             self.escapeCancelDown = NO;
-            if (!self.eventTap && enabled) [self restartKeyboardTap];
+            BOOL listenConfiguredTrigger = [self.keyboardConfig[@"enabled"] boolValue] || [self.keyboardConfig[@"captureCancelOnly"] boolValue];
+            if (enabled) {
+                if (!self.eventTap) {
+                    [self restartKeyboardTap];
+                } else {
+                    Emit(@"keyboard_escape_cancel_ready", @{@"enabled": @YES});
+                }
+            } else {
+                if (!listenConfiguredTrigger && !self.appSwitcherActive) {
+                    [self teardownKeyboardTap];
+                }
+            }
         }
         if (!enabled) Emit(@"keyboard_escape_cancel_ready", @{@"enabled": @NO});
     } else if ([type isEqualToString:@"app_switcher_commit"]) {
@@ -486,7 +500,7 @@ static CGEventRef KeyboardEventCallback(
 
 - (void)handleReportID:(uint32_t)reportID data:(NSData *)data {
     self.hidDevicePresent = YES;
-    if (!self.peripheral && !self.stopped && self.central.state == CBManagerStatePoweredOn) {
+    if (!self.peripheral && !self.connectAttemptPending && !self.discoveryTimer && !self.stopped && self.central.state == CBManagerStatePoweredOn) {
         [self startDiscoveryWindowWithDuration:15.0];
     }
     if (reportID != 0x01 || data.length == 0) return;
@@ -895,6 +909,8 @@ static CGEventRef KeyboardEventCallback(
                 Emit(@"audio_reopen_requested", @{@"reason": @(reason), @"frames": @(self.audioFrameCount)});
                 [self openMicrophone];
             } else {
+                [self.keepAliveTimer invalidate];
+                self.keepAliveTimer = nil;
                 Emit(@"audio_stream_stopped", @{@"reason": @(reason), @"frames": @(self.audioFrameCount)});
             }
             self.audioFrameCount = 0;
@@ -1145,7 +1161,12 @@ static CGEventRef KeyboardEventCallback(
     __weak RemoteHelper *weakSelf = self;
     self.keepAliveTimer = [NSTimer scheduledTimerWithTimeInterval:4.0 repeats:YES block:^(NSTimer *timer) {
         RemoteHelper *helper = weakSelf;
-        if (!helper.keepCaptureOpen || !helper.isStreaming || helper.capsVersion == 0) return;
+        if (!helper || helper.stopped || !helper.keepCaptureOpen) {
+            [timer invalidate];
+            if (helper.keepAliveTimer == timer) helper.keepAliveTimer = nil;
+            return;
+        }
+        if (!helper.isStreaming || helper.capsVersion == 0) return;
         if (helper.capsVersion == 0x0004) {
             uint8_t b[] = {0x0C, 0x00, (uint8_t)helper.codec};
             [helper writeCommand:[NSData dataWithBytes:b length:sizeof(b)]];
@@ -1224,15 +1245,26 @@ static CGEventRef KeyboardEventCallback(
     return flags;
 }
 
-- (void)restartKeyboardTap {
+- (void)teardownKeyboardTap {
     [self stopTapOrderGuard];
+    if (self.eventTap) {
+        CGEventTapEnable(self.eventTap, false);
+        CFMachPortInvalidate(self.eventTap);
+    }
+    if (self.eventTapSource) {
+        CFRunLoopRemoveSource(CFRunLoopGetMain(), self.eventTapSource, kCFRunLoopCommonModes);
+        CFRelease(self.eventTapSource);
+        self.eventTapSource = NULL;
+    }
+    if (self.eventTap) {
+        CFRelease(self.eventTap);
+        self.eventTap = NULL;
+    }
+}
+
+- (void)restartKeyboardTap {
     if (self.keyboardTriggerDown) Emit(@"keyboard_trigger_up", @{@"interrupted": @YES, @"passThrough": @([self.keyboardConfig[@"passThrough"] boolValue])});
-    if (self.eventTap) CGEventTapEnable(self.eventTap, false);
-    if (self.eventTapSource) CFRunLoopRemoveSource(CFRunLoopGetMain(), self.eventTapSource, kCFRunLoopCommonModes);
-    if (self.eventTapSource) CFRelease(self.eventTapSource);
-    if (self.eventTap) CFRelease(self.eventTap);
-    self.eventTapSource = NULL;
-    self.eventTap = NULL;
+    [self teardownKeyboardTap];
     self.keyboardTriggerDown = NO;
     self.keyboardModifierState = (KKModifierState){0};
     self.escapeCancelDown = NO;
@@ -1277,68 +1309,34 @@ static CGEventRef KeyboardEventCallback(
             Emit(@"keyboard_trigger_ready", @{@"key": key, @"captureCancelOnly": @(captureCancelOnly), @"passThrough": @([self.keyboardConfig[@"passThrough"] boolValue])});
         }
         if (self.escapeCancelActive) Emit(@"keyboard_escape_cancel_ready", @{@"enabled": @YES});
+    } else {
+        [self teardownKeyboardTap];
     }
 }
 
-- (BOOL)isEventTapPreemptedByOtherHIDTap {
-    if (!self.eventTap || self.stopped) return NO;
-    uint32_t count = 0;
-    if (CGGetEventTapList(0, NULL, &count) != kCGErrorSuccess || count == 0) return NO;
-    if (count > 64) count = 64;
-    CGEventTapInformation taps[64];
-    if (CGGetEventTapList(count, taps, &count) != kCGErrorSuccess || count == 0) return NO;
-
-    pid_t selfPID = getpid();
-    CGEventMask keyboardMask = CGEventMaskBit(kCGEventKeyDown)
-        | CGEventMaskBit(kCGEventKeyUp)
-        | CGEventMaskBit(kCGEventFlagsChanged);
-    BOOL sawOtherBlockingHIDKeyboardTap = NO;
-    for (uint32_t i = 0; i < count; i++) {
-        CGEventTapInformation info = taps[i];
-        if (!info.enabled) continue;
-        if (info.tapPoint != kCGHIDEventTap || info.options != kCGEventTapOptionDefault) continue;
-        if ((info.eventsOfInterest & keyboardMask) == 0) continue;
-        if (info.tappingProcess == selfPID) {
-            return sawOtherBlockingHIDKeyboardTap;
-        }
-        sawOtherBlockingHIDKeyboardTap = YES;
-    }
-    return NO;
-}
-
-- (void)ensureKeyboardTapAtHIDHead {
+- (void)handleWorkspaceApplicationDeactivated:(NSNotification *)notification {
     if (self.stopped || !self.eventTap) return;
     if (self.keyboardTriggerDown || self.escapeCancelDown || self.appSwitcherActive) return;
-    if ([self isEventTapPreemptedByOtherHIDTap]) {
+    NSRunningApplication *deactivatedApp = notification.userInfo[NSWorkspaceApplicationKey];
+    NSString *bundleId = deactivatedApp.bundleIdentifier.lowercaseString ?: @"";
+    if ([bundleId hasPrefix:@"com.bytedance.inputmethod.doubaoime"]) {
         [self restartKeyboardTap];
     }
 }
 
-- (void)handleWorkspaceApplicationActivated:(NSNotification *)notification {
-    [self ensureKeyboardTapAtHIDHead];
-}
-
 - (void)startTapOrderGuard {
-    [self.tapOrderGuardTimer invalidate];
-    self.tapOrderGuardTimer = [NSTimer scheduledTimerWithTimeInterval:1.5
-                                                               target:self
-                                                             selector:@selector(ensureKeyboardTapAtHIDHead)
-                                                             userInfo:nil
-                                                              repeats:YES];
     [[[NSWorkspace sharedWorkspace] notificationCenter] removeObserver:self
-                                                                  name:NSWorkspaceDidActivateApplicationNotification
+                                                                  name:NSWorkspaceDidDeactivateApplicationNotification
                                                                 object:nil];
     [[[NSWorkspace sharedWorkspace] notificationCenter] addObserver:self
-                                                           selector:@selector(handleWorkspaceApplicationActivated:)
-                                                               name:NSWorkspaceDidActivateApplicationNotification
+                                                           selector:@selector(handleWorkspaceApplicationDeactivated:)
+                                                               name:NSWorkspaceDidDeactivateApplicationNotification
                                                              object:nil];
 }
 
 - (void)stopTapOrderGuard {
-    [self.tapOrderGuardTimer invalidate];
-    self.tapOrderGuardTimer = nil;
     [[[NSWorkspace sharedWorkspace] notificationCenter] removeObserver:self
-                                                                  name:NSWorkspaceDidActivateApplicationNotification
+                                                                  name:NSWorkspaceDidDeactivateApplicationNotification
                                                                 object:nil];
 }
 
@@ -2064,21 +2062,11 @@ static CGEventRef KeyboardEventCallback(
     [self.keepAliveTimer invalidate];
     self.keepAliveTimer = nil;
     [self stopDiscoveryTimer];
-    [self stopTapOrderGuard];
     self.scanningEmitted = NO;
     [self closeMicrophoneForcefully];
     [self.central stopScan];
     if (self.peripheral) [self.central cancelPeripheralConnection:self.peripheral];
-    if (self.eventTap) CGEventTapEnable(self.eventTap, false);
-    if (self.eventTapSource) {
-        CFRunLoopRemoveSource(CFRunLoopGetMain(), self.eventTapSource, kCFRunLoopCommonModes);
-        CFRelease(self.eventTapSource);
-        self.eventTapSource = NULL;
-    }
-    if (self.eventTap) {
-        CFRelease(self.eventTap);
-        self.eventTap = NULL;
-    }
+    [self teardownKeyboardTap];
     [self stopHID];
     Emit(@"helper_stopped", @{});
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{

@@ -154,7 +154,6 @@ struct StatusDot: View {
     let tone: StatusTone
     var size: CGFloat = 8
     var pulse: Bool? = nil
-    @State private var animatePulse = false
 
     private var shouldPulse: Bool {
         pulse ?? tone.isPulsing
@@ -164,26 +163,15 @@ struct StatusDot: View {
         ZStack {
             if shouldPulse {
                 Circle()
-                    .fill(tone.color.opacity(0.32))
-                    .frame(width: size * 2.1, height: size * 2.1)
-                    .scaleEffect(animatePulse ? 1.15 : 0.75)
-                    .opacity(animatePulse ? 0.15 : 0.65)
-                    .animation(
-                        .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
-                        value: animatePulse
-                    )
+                    .fill(tone.color.opacity(0.28))
+                    .frame(width: size * 2.0, height: size * 2.0)
             }
             Circle()
                 .fill(tone.color)
                 .frame(width: size, height: size)
         }
         .frame(width: size * 2.1, height: size * 2.1)
-        .onAppear {
-            animatePulse = shouldPulse
-        }
-        .onChange(of: shouldPulse) { newValue in
-            animatePulse = newValue
-        }
+        .animation(DS.stateAnimation, value: shouldPulse)
     }
 }
 

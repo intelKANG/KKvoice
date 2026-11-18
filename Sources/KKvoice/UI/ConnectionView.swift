@@ -4,7 +4,6 @@ import VoiceSessions
 
 struct ConnectionView: View {
     @ObservedObject var model: AppModel
-    @State private var pulseRing = false
 
     private static let controlColumnWidth: CGFloat = 240
     private static let refreshButtonWidth: CGFloat = 28
@@ -72,13 +71,7 @@ struct ConnectionView: View {
                     if model.isRecording {
                         Circle()
                             .stroke(Color.blue.opacity(0.32), lineWidth: 2)
-                            .frame(width: 148, height: 148)
-                            .scaleEffect(pulseRing ? 1.16 : 0.86)
-                            .opacity(pulseRing ? 0.15 : 0.65)
-                            .animation(
-                                .easeInOut(duration: 1.1).repeatForever(autoreverses: true),
-                                value: pulseRing
-                            )
+                            .frame(width: 156, height: 156)
                     }
 
                     RemoteIllustration(
@@ -89,10 +82,7 @@ struct ConnectionView: View {
                 }
                 .frame(height: 212)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .onAppear { pulseRing = model.isRecording }
-                .onChange(of: model.isRecording) { active in
-                    pulseRing = active
-                }
+                .animation(DS.stateAnimation, value: model.isRecording)
 
                 VStack(spacing: 4) {
                     HStack(spacing: DS.s8) {

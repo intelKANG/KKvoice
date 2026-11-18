@@ -1292,7 +1292,15 @@ final class AppModel: ObservableObject {
     }
 
     func handleHelperMessage(_ message: [String: Any]) {
-        if let type = message["type"] as? String,
+        let messageType = message["type"] as? String
+        if messageType == "audio_frame" {
+            guard message["sampleRate"] as? Int == 16_000,
+                  let encoded = message["pcmBase64"] as? String,
+                  let pcm = Data(base64Encoded: encoded) else { return }
+            _ = audioRouter.receiveRemotePCM(pcm)
+            return
+        }
+        if let type = messageType,
            let raw = message["actionId"] as? String,
            let id = UUID(uuidString: raw),
            let adapter = snapAdapter {
@@ -1300,14 +1308,22 @@ final class AppModel: ObservableObject {
             Task { await adapter.handleHelperEvent(type: type, actionID: id, prevented: prevented) }
         }
         keyboardStatus.receive(message)
+        let nextKeyboardState: KeyboardListenerStatus.State
+        let nextKeyboardStatusText: String
         if keyboardSettings.wakeDefinition() == nil {
-            keyboardState = .disabled
-            keyboardStatusText = "未启用"
+            nextKeyboardState = .disabled
+            nextKeyboardStatusText = "未启用"
         } else {
-            keyboardState = keyboardStatus.state
-            keyboardStatusText = keyboardStatus.text
+            nextKeyboardState = keyboardStatus.state
+            nextKeyboardStatusText = keyboardStatus.text
         }
-        switch message["type"] as? String {
+        if keyboardState != nextKeyboardState {
+            keyboardState = nextKeyboardState
+        }
+        if keyboardStatusText != nextKeyboardStatusText {
+            keyboardStatusText = nextKeyboardStatusText
+        }
+        switch messageType {
         case "device_ready":
             voice.setReady(true)
             voiceChannelReady = true
@@ -1484,37 +1500,47 @@ final class AppModel: ObservableObject {
     }
 
     private func syncVoicePhase() {
+        let nextIsRecording: Bool
+        let nextPhase: ConnectionPhase
         switch voice.phase {
         case .recording:
-            isRecording = true
-            connectionPhase = .recording
+            nextIsRecording = true
+            nextPhase = .recording
         case .starting, .stopping:
-            isRecording = false
+            nextIsRecording = false
             if hidConnected && voiceChannelReady {
-                connectionPhase = .voiceReady
+                nextPhase = .voiceReady
             } else if hidConnected {
-                connectionPhase = .keysConnected
+                nextPhase = .keysConnected
             } else {
-                connectionPhase = .connecting
+                nextPhase = .connecting
             }
         case .idle:
-            isRecording = false
-            recordingFrames = 0
-            if let perm = requiredPermission {
-                connectionPhase = .permissionRequired(perm)
-            } else if hidConnected && voiceChannelReady {
-                connectionPhase = .voiceReady
-            } else if hidConnected {
-                connectionPhase = .keysConnected
-            } else if voiceChannelReady {
-                connectionPhase = .connecting
-            } else if isRemoteInStandby {
-                connectionPhase = .standby
-            } else if isSessionActive {
-                connectionPhase = .connecting
-            } else {
-                connectionPhase = .disconnected
+            nextIsRecording = false
+            if recordingFrames != 0 {
+                recordingFrames = 0
             }
+            if let perm = requiredPermission {
+                nextPhase = .permissionRequired(perm)
+            } else if hidConnected && voiceChannelReady {
+                nextPhase = .voiceReady
+            } else if hidConnected {
+                nextPhase = .keysConnected
+            } else if voiceChannelReady {
+                nextPhase = .connecting
+            } else if isRemoteInStandby {
+                nextPhase = .standby
+            } else if isSessionActive {
+                nextPhase = .connecting
+            } else {
+                nextPhase = .disconnected
+            }
+        }
+        if isRecording != nextIsRecording {
+            isRecording = nextIsRecording
+        }
+        if connectionPhase != nextPhase {
+            connectionPhase = nextPhase
         }
     }
 

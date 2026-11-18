@@ -74,12 +74,12 @@ KKvoice 内部将语音软件统一视为**「按一下开始，再按一下结�
 2. **同层级后进先出顺序（LIFO）**：
    - 在同一个 `kCGHIDEventTap` 层级内，macOS 默认让**最后创建的 `kCGHeadInsertEventTap` 监听排在最前面**。如果用户在输入法设置里刚刚修改过快捷键，输入法重建的监听就会排到 KKvoice 前面。
 
-### 解决方案（HID 层首位守护 + 合成事件染色放行）
+### 解决方案（HID 层按需挂载 + 显式注销端口 + 合成事件染色放行）
 1. **挂载至 `kCGHIDEventTap` 头部**：
-   - `KKvoiceRemoteHelper` 优先在 `kCGHIDEventTap`（`kCGHeadInsertEventTap`）创建全局键盘监听。
-2. **`CGGetEventTapList` 队列首位守护（`ensureKeyboardTapAtHIDHead`）**：
-   - 辅助进程通过系统公开 API `CGGetEventTapList` 检查当前活跃的 `kCGHIDEventTap` 顺序；
-   - 一旦检测到其他进程（如豆包输入法或微信输入法）新插入了阻塞式键盘监听并排到了 `KKvoiceRemoteHelper` 前面，辅助进程会在空闲时自动重建监听，确保自己始终排在 **`#0` 首位**。
+   - 当用户启用「键盘触发键」或进入收音/切换器会话时，`KKvoiceRemoteHelper` 在 `kCGHIDEventTap`（`kCGHeadInsertEventTap`）创建全局键盘监听；若「键盘触发键」设为「不启用」且处于空闲状态，则保持 **0 个**键盘监听钩子。
+2. **严禁定时轮询抢占 + 销毁时必须调用 `CFMachPortInvalidate`**：
+   - **踩坑教训**：微信输入法（`WeType`）后台自带定时器检测并重建其 `kCGHIDEventTap`。若 `KKvoiceRemoteHelper` 也使用定时器轮询 `CGGetEventTapList` 抢占 `#0` 首位，双方会陷入每 1.5 秒一次的无限互抢重建循环；更严重的是，`CGEventTapCreate` 返回的 `CFMachPortRef` 若仅调用 `CGEventTapEnable(tap, false)` 和 `CFRelease(tap)` 而不调用 **`CFMachPortInvalidate(tap)`**，底层 Mach 端口会永久残留在 macOS `WindowServer` 全局事件表中（每小时泄漏约 2,400 个僵尸 tap），导致整机鼠标移动与键盘输入严重卡顿。
+   - **修复方案**：移除周期性轮询定时器，仅在配置变更或用户从豆包输入法设置窗口切出（`NSWorkspaceDidDeactivateApplicationNotification`）时按需重建一次；且每次释放 `eventTap` 前必须先执行 `CFMachPortInvalidate(self.eventTap)`，确保 `WindowServer` 立即注销对应端口。
 3. **物理按键拦截与合成事件染色放行**：
    - 当用户按下物理键盘触发键时，排在 `#0` 的 `KKvoiceRemoteHelper` 优先拦截并返回 `NULL`（吞掉物理按键，阻止输入法提前抢跑），同时通知 KKvoice 主进程唤醒遥控器麦克风（或开启备用收音设备）；
    - 待音频通道准备就绪且物理按键释放后，KKvoice 通过 `SystemShortcutSender` 发送带有专属 `kCGEventSourceUserData` 标记（`kKKvoiceSyntheticKeyMarker = 0x4B4B564F494345`）的合成按键事件；
