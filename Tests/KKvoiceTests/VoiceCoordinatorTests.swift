@@ -174,4 +174,34 @@ extension VoiceCoordinatorTests {
         XCTAssertFalse(c.isUsingLocalFallback)
         XCTAssertEqual(events, ["ensure_capture", "set_escape_cancel", "mac-start"])
     }
+
+    func testRemoteStartSkipsDuplicateToggleWhenTargetAlreadyCapturingAndStopsNormally() {
+        var events: [String] = []
+        var alreadyCapturing = true
+        let c = VoiceCoordinator(
+            beginOutput: { _ in events.append("output-start") },
+            endOutput: { _ in events.append("output-stop"); return nil },
+            command: { events.append($0["type"] as? String ?? "?") },
+            shortcut: { events.append("shortcut") },
+            report: { _ in },
+            isTargetAlreadyCapturing: { alreadyCapturing }
+        )
+        c.setReady(true)
+        // Target voice input app is already capturing when remote voice button is pressed:
+        // must open remote capture WITHOUT sending a toggle shortcut that would close the input app.
+        c.press(.remote)
+        c.audioStarted()
+        c.release(.remote)
+        XCTAssertEqual(events, ["ensure_capture", "set_escape_cancel", "output-start"])
+
+        // Second remote press/release stops capture AND sends the closing toggle shortcut.
+        alreadyCapturing = false
+        c.press(.remote)
+        c.release(.remote)
+        XCTAssertEqual(
+            events,
+            ["ensure_capture", "set_escape_cancel", "output-start", "stop_capture", "set_escape_cancel", "output-stop", "shortcut"]
+        )
+        XCTAssertEqual(c.phase, .idle)
+    }
 }

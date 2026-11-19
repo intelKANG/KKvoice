@@ -17,7 +17,7 @@ static NSString * const ATVVControlUUID = @"AB5E0004-5A21-4F05-BC7D-AF01F617B664
 static NSString * const kLastChromecastPeripheralUUIDKey = @"lastChromecastPeripheralUUID";
 static const int kRemoteVendorID = 0x18D1;
 static const int kRemoteProductID = 0x9450;
-static const int64_t kSyntheticKeyMarker = 0x564F4B4945;
+static const int64_t kSyntheticKeyMarker = 0x4B4B564F494345;
 static const int64_t kKKvoiceSyntheticKeyMarker = 0x4B4B564F494345;
 static NSObject *gOutputLock;
 

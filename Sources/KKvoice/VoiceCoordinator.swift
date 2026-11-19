@@ -22,16 +22,19 @@ final class VoiceCoordinator {
     private var timeoutWork: DispatchWorkItem?
     private var needsRecovery = false
     var allowKeyboardFallbackWhenNotReady: Bool
+    private let isTargetAlreadyCapturing: () -> Bool
     private(set) var isUsingLocalFallback = false
     private var lastSessionWasLocalFallback = false
 
     init(beginOutput: @escaping BeginOutput, endOutput: @escaping EndOutput,
          command: @escaping ([String: Any]) throws -> Void,
          shortcut: @escaping () throws -> Void, report: @escaping (String) -> Void,
-         allowKeyboardFallbackWhenNotReady: Bool = false) {
+         allowKeyboardFallbackWhenNotReady: Bool = false,
+         isTargetAlreadyCapturing: @escaping () -> Bool = { false }) {
         self.beginOutput = beginOutput; self.endOutput = endOutput
         self.command = command; self.shortcut = shortcut; self.report = report
         self.allowKeyboardFallbackWhenNotReady = allowKeyboardFallbackWhenNotReady
+        self.isTargetAlreadyCapturing = isTargetAlreadyCapturing
     }
     var phase: VoiceSession.Phase { session.phase }
     @discardableResult func setRemoteGesture(_ gesture: VoiceSession.RemoteGesture) -> Bool {
@@ -91,12 +94,22 @@ final class VoiceCoordinator {
         }
         guard deferredToggle == nil else { report("等待释放唤醒键。") ; return }
         guard !needsRecovery else { report("输入软件状态未确认") ; return }
+        let origin: ShortcutRelay.Origin
         if case .idle = session.phase {
             isUsingLocalFallback = !ready
             lastSessionWasLocalFallback = isUsingLocalFallback
+            if source == .keyboard {
+                origin = keyboardOrigin
+            } else if isTargetAlreadyCapturing() {
+                origin = .keyboardDelivered
+            } else {
+                origin = .remote
+            }
+        } else {
+            origin = source == .keyboard ? keyboardOrigin : .remote
         }
         apply(relay.handle(session.press(source, at: ProcessInfo.processInfo.systemUptime),
-                           origin: source == .keyboard ? keyboardOrigin : .remote))
+                           origin: origin))
     }
     func release(_ source: VoiceSession.Source) {
         if source == .keyboard { keyboardHeld = false }

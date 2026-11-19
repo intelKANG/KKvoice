@@ -262,8 +262,15 @@ final class AppModel: ObservableObject {
         send: { [weak self] message in
             guard let self else { throw NSError(domain: "KKvoice", code: 21) }
             try self.bridge.send(message)
+            if message["type"] as? String == "post_key",
+               message["target"] as? String == "escape",
+               self.isVoiceActive() {
+                self.voice.cancelWithoutSubmitting()
+                self.syncVoicePhase()
+                self.scheduleCancelVerificationIfNeeded()
+            }
         },
-        cancelVoice: { [weak self] in self?.voice.cancelWithoutSubmitting() },
+        cancelVoice: { [weak self] in self?.cancelVoiceFromRemote() },
         status: { [weak self] text in self?.statusText = text }
     )
     private let output = KKCoreAudioOutput()
@@ -317,7 +324,11 @@ final class AppModel: ObservableObject {
             self.statusText = text
             self.syncVoicePhase()
         },
-        allowKeyboardFallbackWhenNotReady: true
+        allowKeyboardFallbackWhenNotReady: true,
+        isTargetAlreadyCapturing: { [weak self] in
+            guard let self, let uid = self.selectedDeviceUID else { return false }
+            return InputApplicationAudioMonitor.isVokieCapturing(deviceUID: uid) == true
+        }
     )
 
     var canConnect: Bool { !isSessionActive && isKKvoiceMicAvailable && !isDriverInstalling }
@@ -1291,6 +1302,34 @@ final class AppModel: ObservableObject {
         return true
     }
 
+    private func cancelVoiceFromRemote() {
+        let wasVoiceActive = isVoiceActive()
+        let wasInputAppCapturing: Bool = {
+            guard let uid = selectedDeviceUID else { return false }
+            return InputApplicationAudioMonitor.isVokieCapturing(deviceUID: uid) == true
+        }()
+        if wasVoiceActive {
+            voice.cancelWithoutSubmitting()
+            syncVoicePhase()
+        }
+        guard wasVoiceActive || wasInputAppCapturing else {
+            statusText = "未在收音"
+            return
+        }
+        try? bridge.send(["type": "post_key", "target": "escape"])
+        statusText = "已取消收音"
+        scheduleCancelVerificationIfNeeded()
+    }
+
+    private func scheduleCancelVerificationIfNeeded() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self, !self.isVoiceActive(), let uid = self.selectedDeviceUID else { return }
+            if InputApplicationAudioMonitor.isVokieCapturing(deviceUID: uid) == true {
+                try? SystemShortcutSender.send(self.chosenInputShortcut)
+            }
+        }
+    }
+
     func handleHelperMessage(_ message: [String: Any]) {
         let messageType = message["type"] as? String
         if messageType == "audio_frame" {
@@ -1422,6 +1461,7 @@ final class AppModel: ObservableObject {
         case "keyboard_cancel_session":
             voice.cancelWithoutSubmitting()
             syncVoicePhase()
+            scheduleCancelVerificationIfNeeded()
         case "capture_probe_started":
             statusText = "正在启动收音…"
         case "capture_probe_timeout":
@@ -1430,6 +1470,7 @@ final class AppModel: ObservableObject {
         case "audio_start":
             voice.audioStarted()
             recordingFrames = 0
+            startInputAppWatchdog()
             syncVoicePhase()
         case "audio_reopen_requested":
             statusText = "正在恢复收音…"
