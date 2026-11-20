@@ -199,4 +199,51 @@ final class AudioSourceRouterTests: XCTestCase {
         XCTAssertNil(input.startedUID)
         XCTAssertNil(output.selectedUID)
     }
+
+    func testNotDeterminedPermissionRequestAndHardenedRuntimeEntitlements() throws {
+        let output = MockOutput()
+        let input = MockInputDriver()
+        var grantedResult = false
+        var deniedCallbackCount = 0
+        let macSource = MacMicrophoneSource(
+            input: input,
+            output: output,
+            permissionCheck: { .notDetermined },
+            permissionRequest: { completion in
+                completion(grantedResult)
+            }
+        )
+
+        // When permissionRequest returns false, session stops cleanly and notifies onPermissionDenied.
+        let deniedSession = try macSource.start(
+            inputDeviceUID: "BuiltInMicrophoneDevice",
+            outputDeviceUID: "KKvoiceMi2ch_UID",
+            onPermissionDenied: { deniedCallbackCount += 1 }
+        )
+        XCTAssertEqual(deniedCallbackCount, 1)
+        XCTAssertNil(input.startedUID)
+        XCTAssertNil(output.selectedUID)
+        XCTAssertFalse(macSource.stop(session: deniedSession))
+
+        // When permissionRequest returns true, capture stays active until stopped.
+        grantedResult = true
+        let allowedSession = try macSource.start(
+            inputDeviceUID: "BuiltInMicrophoneDevice",
+            outputDeviceUID: "KKvoiceMi2ch_UID",
+            onPermissionDenied: { deniedCallbackCount += 1 }
+        )
+        XCTAssertEqual(deniedCallbackCount, 1)
+        XCTAssertEqual(input.startedUID, "BuiltInMicrophoneDevice")
+        XCTAssertEqual(output.selectedUID, "KKvoiceMi2ch_UID")
+        XCTAssertTrue(macSource.stop(session: allowedSession))
+
+        // Hardened Runtime requires com.apple.security.device.audio-input so macOS tccd registers KKvoice in System Settings -> Microphone.
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appEntitlementsURL = repoRoot.appendingPathComponent("Native/KKvoice.entitlements")
+        let appEntitlements = NSDictionary(contentsOf: appEntitlementsURL) as? [String: Any]
+        XCTAssertEqual(appEntitlements?["com.apple.security.device.audio-input"] as? Bool, true)
+    }
 }

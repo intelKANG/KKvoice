@@ -224,6 +224,7 @@ final class AppModel: ObservableObject {
 
     let updater: AppUpdater
     private var updaterCancellable: AnyCancellable?
+    private var appActiveCancellable: AnyCancellable?
 
     @Published var unsavedPage: SidebarTab? = nil
     private var unsavedSaveHandler: (() -> Bool)? = nil
@@ -296,6 +297,9 @@ final class AppModel: ObservableObject {
                 )
                 self.currentAudioSource = source
                 if case .mac = source {
+                    if self.requiredPermission == "microphone" {
+                        self.requiredPermission = nil
+                    }
                     self.startInputAppWatchdog()
                 }
             } catch let error as MacMicrophoneError {
@@ -442,6 +446,13 @@ final class AppModel: ObservableObject {
         self.updaterCancellable = resolvedUpdater.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
+        self.appActiveCancellable = NotificationCenter.default
+            .publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.refreshMicrophonePermissionStateIfNeeded()
+                }
+            }
         resolvedUpdater.canPresentOrAutoInstall = { [weak self] in
             guard let self else { return true }
             return !self.isRecording
@@ -1665,8 +1676,46 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func refreshMicrophonePermissionStateIfNeeded() {
+        guard requiredPermission == "microphone" else { return }
+        if MacMicrophoneSource.systemPermissionStatus() == .authorized {
+            requiredPermission = nil
+            statusText = "麦克风权限已就绪"
+            syncVoicePhase()
+        }
+    }
+
     func openPermissionSettings(for permission: String? = nil) {
         let target = permission ?? activePermissionIssue ?? ""
+        if target == "microphone" {
+            let status = MacMicrophoneSource.systemPermissionStatus()
+            if status == .authorized {
+                refreshMicrophonePermissionStateIfNeeded()
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+                    NSWorkspace.shared.open(url)
+                }
+                return
+            }
+            if status == .notDetermined {
+                NSApp?.activate(ignoringOtherApps: true)
+                MacMicrophoneSource.requestSystemPermission { [weak self] granted in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if granted {
+                            if self.requiredPermission == "microphone" {
+                                self.requiredPermission = nil
+                            }
+                            self.statusText = "麦克风权限已就绪"
+                            self.syncVoicePhase()
+                        } else if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                }
+                return
+            }
+            MacMicrophoneSource.requestSystemPermission { _ in }
+        }
         let urlString: String
         switch target {
         case "accessibility":

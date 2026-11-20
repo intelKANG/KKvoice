@@ -372,7 +372,7 @@ public final class MacMicrophoneSource {
     public typealias PermissionChecker = () -> MacMicrophonePermissionStatus
     public typealias PermissionRequester = (@escaping (Bool) -> Void) -> Void
 
-    private let lifecycleLock = NSLock()
+    private let lifecycleLock = NSRecursiveLock()
     private let input: MacMicrophoneInputDriver
     private let output: RemoteAudioOutput
     private let buffer: MacMicrophonePCMBuffer

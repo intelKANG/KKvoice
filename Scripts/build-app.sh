@@ -69,12 +69,14 @@ else
   print -u2 "Warning: skipping KKvoiceMic.driver bundling (not built from BlackHole source)."
 fi
 
+app_entitlements="$root/Native/KKvoice.entitlements"
+helper_entitlements="$root/Native/Helper/KKvoiceRemoteHelper.entitlements"
 if [[ "$sign_identity" == "-" ]]; then
-  codesign --force --sign - --timestamp=none --requirements '=designated => identifier "local.kkvoice.remote-helper"' "$contents/Resources/KKvoiceRemoteHelper.app"
-  codesign --force --sign - --timestamp=none --requirements '=designated => identifier "local.kkvoice.app"' "$app"
+  codesign --force --sign - --timestamp=none --entitlements "$helper_entitlements" --requirements '=designated => identifier "local.kkvoice.remote-helper"' "$contents/Resources/KKvoiceRemoteHelper.app"
+  codesign --force --sign - --timestamp=none --entitlements "$app_entitlements" --requirements '=designated => identifier "local.kkvoice.app"' "$app"
 else
-  codesign --force --options runtime --timestamp=none --sign "$sign_identity" "$contents/Resources/KKvoiceRemoteHelper.app"
-  codesign --force --options runtime --timestamp=none --sign "$sign_identity" "$app"
+  codesign --force --options runtime --timestamp=none --entitlements "$helper_entitlements" --sign "$sign_identity" "$contents/Resources/KKvoiceRemoteHelper.app"
+  codesign --force --options runtime --timestamp=none --entitlements "$app_entitlements" --sign "$sign_identity" "$app"
 fi
 
 codesign --verify --deep --strict "$app"

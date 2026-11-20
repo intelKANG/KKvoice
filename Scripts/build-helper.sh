@@ -31,10 +31,11 @@ clang -O2 -fobjc-arc -arch arm64 -arch x86_64 -mmacosx-version-min=12.0 \
   -o "$contents/MacOS/KKvoiceRemoteHelper"
 
 sign_identity="$(resolve_codesign_identity)"
+helper_entitlements="$root/Native/Helper/KKvoiceRemoteHelper.entitlements"
 if [[ "$sign_identity" == "-" ]]; then
-  codesign --force --sign - --timestamp=none --requirements '=designated => identifier "local.kkvoice.remote-helper"' "$helper"
+  codesign --force --sign - --timestamp=none --entitlements "$helper_entitlements" --requirements '=designated => identifier "local.kkvoice.remote-helper"' "$helper"
 else
-  codesign --force --options runtime --timestamp=none --sign "$sign_identity" "$helper"
+  codesign --force --options runtime --timestamp=none --entitlements "$helper_entitlements" --sign "$sign_identity" "$helper"
 fi
 codesign --verify --strict "$helper"
 print "Built helper: $helper (signed with $sign_identity)"
