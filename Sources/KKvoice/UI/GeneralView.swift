@@ -24,6 +24,20 @@ struct GeneralView: View {
         )
     }
 
+    private var recordingSoundsBinding: Binding<Bool> {
+        Binding(
+            get: { model.playRecordingSounds },
+            set: { model.setPlayRecordingSounds($0) }
+        )
+    }
+
+    private var recordingSoundThemeBinding: Binding<RecordingSoundTheme> {
+        Binding(
+            get: { model.recordingSoundTheme },
+            set: { model.setRecordingSoundTheme($0) }
+        )
+    }
+
     private var autoCheckUpdatesBinding: Binding<Bool> {
         Binding(
             get: { model.updater.autoCheckEnabled },
@@ -106,6 +120,40 @@ struct GeneralView: View {
                         .labelsHidden()
                         .toggleStyle(.kkSwitch)
                         .accessibilityLabel("菜单栏图标")
+                }
+
+                CardDivider()
+
+                LabeledRow(
+                    "收音提示音",
+                    subtitle: "开始、结束或取消收音时播放轻柔提示音，盲操更安心",
+                    systemImage: "speaker.wave.2"
+                ) {
+                    HStack(spacing: DS.s8) {
+                        if model.playRecordingSounds {
+                            Picker("", selection: recordingSoundThemeBinding) {
+                                ForEach(RecordingSoundTheme.allCases) { theme in
+                                    Text(theme.title).tag(theme)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(width: 92)
+
+                            Button {
+                                model.previewRecordingSound()
+                            } label: {
+                                Image(systemName: "play.circle")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("试听当前提示音")
+                            .accessibilityLabel("试听提示音")
+                        }
+
+                        Toggle("", isOn: recordingSoundsBinding)
+                            .labelsHidden()
+                            .toggleStyle(.kkSwitch)
+                            .accessibilityLabel("收音提示音")
+                    }
                 }
 
                 CardDivider()

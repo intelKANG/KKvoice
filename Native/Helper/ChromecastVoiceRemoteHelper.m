@@ -14,6 +14,8 @@ static NSString * const ATVVServiceUUID = @"AB5E0001-5A21-4F05-BC7D-AF01F617B664
 static NSString * const ATVVCommandUUID = @"AB5E0002-5A21-4F05-BC7D-AF01F617B664";
 static NSString * const ATVVAudioUUID = @"AB5E0003-5A21-4F05-BC7D-AF01F617B664";
 static NSString * const ATVVControlUUID = @"AB5E0004-5A21-4F05-BC7D-AF01F617B664";
+static NSString * const BatteryServiceUUID = @"180F";
+static NSString * const BatteryLevelUUID = @"2A19";
 static NSString * const kLastChromecastPeripheralUUIDKey = @"lastChromecastPeripheralUUID";
 static const int kRemoteVendorID = 0x18D1;
 static const int kRemoteProductID = 0x9450;
@@ -49,6 +51,7 @@ static void Log(NSString *message) {
 @property(nonatomic, strong) CBCharacteristic *commandCharacteristic;
 @property(nonatomic, strong) CBCharacteristic *audioCharacteristic;
 @property(nonatomic, strong) CBCharacteristic *controlCharacteristic;
+@property(nonatomic, strong) CBCharacteristic *batteryCharacteristic;
 @property(nonatomic, strong) NSTimer *keepAliveTimer;
 @property(nonatomic, strong) NSTimer *discoveryTimer;
 @property(nonatomic, strong) NSTimer *discoveryWindowTimer;
@@ -78,6 +81,10 @@ static void Log(NSString *message) {
 @property(nonatomic, assign) BOOL appSwitcherEscapeDown;
 @property(nonatomic, assign) NSUInteger appSwitcherGeneration;
 @property(nonatomic, assign) BOOL keyboardTriggerDown;
+@property(nonatomic, assign) BOOL modifierTriggerPending;
+@property(nonatomic, assign) BOOL modifierChording;
+@property(nonatomic, assign) NSUInteger modifierTriggerGeneration;
+@property(nonatomic, assign) NSTimeInterval lastScrollOrGestureTime;
 @property(nonatomic, assign) KKModifierState keyboardModifierState;
 @property(nonatomic, assign) BOOL filePickerOpen;
 @property(nonatomic, assign) BOOL hasPendingSyncBeforeStart;
@@ -711,6 +718,7 @@ static CGEventRef KeyboardEventCallback(
     self.commandCharacteristic = nil;
     self.audioCharacteristic = nil;
     self.controlCharacteristic = nil;
+    self.batteryCharacteristic = nil;
     self.capsVersion = 0;
     self.codec = 0;
     self.frameSize = 0;
@@ -744,7 +752,10 @@ static CGEventRef KeyboardEventCallback(
         [self rememberChromecastPeripheral:peripheral];
         [self scheduleHIDPresenceGuardForPeripheral:peripheral];
         Emit(@"ble_connected", @{@"name": peripheral.name ?: @"Chromecast Voice Remote"});
-        [peripheral discoverServices:@[[CBUUID UUIDWithString:ATVVServiceUUID]]];
+        [peripheral discoverServices:@[
+            [CBUUID UUIDWithString:ATVVServiceUUID],
+            [CBUUID UUIDWithString:BatteryServiceUUID]
+        ]];
         return;
     }
     self.connectAttemptPending = YES;
@@ -778,7 +789,10 @@ static CGEventRef KeyboardEventCallback(
     [self rememberChromecastPeripheral:peripheral];
     [self scheduleHIDPresenceGuardForPeripheral:peripheral];
     Emit(@"ble_connected", @{@"name": peripheral.name ?: @"Chromecast Voice Remote"});
-    [peripheral discoverServices:@[[CBUUID UUIDWithString:ATVVServiceUUID]]];
+    [peripheral discoverServices:@[
+        [CBUUID UUIDWithString:ATVVServiceUUID],
+        [CBUUID UUIDWithString:BatteryServiceUUID]
+    ]];
 }
 
 - (void)centralManager:(CBCentralManager *)central didFailToConnectPeripheral:(CBPeripheral *)peripheral
@@ -805,9 +819,12 @@ static CGEventRef KeyboardEventCallback(
 - (void)peripheral:(CBPeripheral *)peripheral didDiscoverServices:(NSError *)error {
     if (peripheral != self.peripheral) return;
     CBUUID *target = [CBUUID UUIDWithString:ATVVServiceUUID];
+    CBUUID *batteryUUID = [CBUUID UUIDWithString:BatteryServiceUUID];
     CBService *service = nil;
+    CBService *batteryService = nil;
     for (CBService *candidate in peripheral.services) {
-        if ([candidate.UUID isEqual:target]) { service = candidate; break; }
+        if ([candidate.UUID isEqual:target]) { service = candidate; }
+        else if ([candidate.UUID isEqual:batteryUUID]) { batteryService = candidate; }
     }
     if (error || !service) {
         [self failCurrentPeripheral:error.localizedDescription ?: @"ATVV service was not found after connection"];
@@ -818,10 +835,27 @@ static CGEventRef KeyboardEventCallback(
         [CBUUID UUIDWithString:ATVVAudioUUID],
         [CBUUID UUIDWithString:ATVVControlUUID]
     ] forService:service];
+    if (batteryService) {
+        [peripheral discoverCharacteristics:@[[CBUUID UUIDWithString:BatteryLevelUUID]] forService:batteryService];
+    }
 }
 
 - (void)peripheral:(CBPeripheral *)peripheral didDiscoverCharacteristicsForService:(CBService *)service error:(NSError *)error {
     if (peripheral != self.peripheral) return;
+    if ([service.UUID isEqual:[CBUUID UUIDWithString:BatteryServiceUUID]]) {
+        if (error) return;
+        for (CBCharacteristic *characteristic in service.characteristics) {
+            if ([characteristic.UUID isEqual:[CBUUID UUIDWithString:BatteryLevelUUID]]) {
+                self.batteryCharacteristic = characteristic;
+                [peripheral readValueForCharacteristic:characteristic];
+                if (characteristic.properties & CBCharacteristicPropertyNotify) {
+                    [peripheral setNotifyValue:YES forCharacteristic:characteristic];
+                }
+                break;
+            }
+        }
+        return;
+    }
     if (error) {
         [self failCurrentPeripheral:error.localizedDescription ?: @"ATVV characteristic discovery failed"];
         return;
@@ -859,6 +893,10 @@ static CGEventRef KeyboardEventCallback(
 
 - (void)peripheral:(CBPeripheral *)peripheral didUpdateNotificationStateForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error {
     if (peripheral != self.peripheral) return;
+    if (characteristic == self.batteryCharacteristic ||
+        [characteristic.UUID isEqual:[CBUUID UUIDWithString:BatteryLevelUUID]]) {
+        return;
+    }
     if (error) {
         [self failCurrentPeripheral:error.localizedDescription ?: @"ATVV notification setup failed"];
         return;
@@ -883,6 +921,15 @@ static CGEventRef KeyboardEventCallback(
 
 - (void)peripheral:(CBPeripheral *)peripheral didUpdateValueForCharacteristic:(CBCharacteristic *)characteristic error:(NSError *)error {
     if (peripheral != self.peripheral) return;
+    if (characteristic == self.batteryCharacteristic ||
+        [characteristic.UUID isEqual:[CBUUID UUIDWithString:BatteryLevelUUID]]) {
+        if (!error && characteristic.value.length >= 1) {
+            const uint8_t *bytes = characteristic.value.bytes;
+            NSInteger level = MIN(100, (NSInteger)bytes[0]);
+            Emit(@"battery_level", @{@"level": @(level)});
+        }
+        return;
+    }
     if (error || characteristic.value.length == 0) {
         if (error) Emit(@"device_error", @{@"message": error.localizedDescription ?: @"Bluetooth notification failed"});
         return;
@@ -1266,6 +1313,9 @@ static CGEventRef KeyboardEventCallback(
     if (self.keyboardTriggerDown) Emit(@"keyboard_trigger_up", @{@"interrupted": @YES, @"passThrough": @([self.keyboardConfig[@"passThrough"] boolValue])});
     [self teardownKeyboardTap];
     self.keyboardTriggerDown = NO;
+    self.modifierTriggerPending = NO;
+    self.modifierChording = NO;
+    self.modifierTriggerGeneration++;
     self.keyboardModifierState = (KKModifierState){0};
     self.escapeCancelDown = NO;
     BOOL captureCancelOnly = [self.keyboardConfig[@"captureCancelOnly"] boolValue];
@@ -1280,6 +1330,15 @@ static CGEventRef KeyboardEventCallback(
     CGEventMask mask = CGEventMaskBit(kCGEventKeyDown)
         | CGEventMaskBit(kCGEventKeyUp)
         | CGEventMaskBit(kCGEventFlagsChanged);
+    if (keyboardTriggerEnabled && !captureCancelOnly && [self isModifierTriggerKey:key]) {
+        mask |= CGEventMaskBit(kCGEventScrollWheel)
+            | CGEventMaskBit(kCGEventLeftMouseDown)
+            | CGEventMaskBit(kCGEventRightMouseDown)
+            | CGEventMaskBit(kCGEventOtherMouseDown)
+            | CGEventMaskBit(29)  // NSEventTypeGesture
+            | CGEventMaskBit(30)  // NSEventTypeMagnify
+            | CGEventMaskBit(32); // NSEventTypeSmartMagnify
+    }
     self.eventTap = CGEventTapCreate(
         kCGHIDEventTap, kCGHeadInsertEventTap, kCGEventTapOptionDefault,
         mask, KeyboardEventCallback, (__bridge void *)self
@@ -1346,6 +1405,9 @@ static CGEventRef KeyboardEventCallback(
     if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
         if (self.keyboardTriggerDown) Emit(@"keyboard_trigger_up", @{@"interrupted": @YES, @"passThrough": @([self.keyboardConfig[@"passThrough"] boolValue])});
         self.keyboardTriggerDown = NO;
+        self.modifierTriggerPending = NO;
+        self.modifierChording = NO;
+        self.modifierTriggerGeneration++;
         self.escapeCancelDown = NO;
         self.keyboardModifierState = (KKModifierState){0};
         if (self.eventTap) {
@@ -1408,29 +1470,101 @@ static CGEventRef KeyboardEventCallback(
     BOOL passThrough = [self.keyboardConfig[@"passThrough"] boolValue];
     NSString *key = self.keyboardConfig[@"key"] ?: @"Fn";
     uint16_t code = [self keyCodeForName:key];
-    if (code == UINT16_MAX || CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode) != code) return NO;
+    if (code == UINT16_MAX) return NO;
     if ([self isModifierTriggerKey:key]) {
+        BOOL isScrollOrGesture = (type == kCGEventScrollWheel)
+            || (type == (CGEventType)29)
+            || (type == (CGEventType)30)
+            || (type == (CGEventType)32);
+        if (isScrollOrGesture) {
+            self.lastScrollOrGestureTime = NSProcessInfo.processInfo.systemUptime;
+        }
+        BOOL isChordInterrupter = isScrollOrGesture
+            || (type == kCGEventLeftMouseDown)
+            || (type == kCGEventRightMouseDown)
+            || (type == kCGEventOtherMouseDown)
+            || (type == kCGEventKeyDown && eventKeyCode != code)
+            || (type == kCGEventFlagsChanged && eventKeyCode != code);
+        if (isChordInterrupter) {
+            if (self.modifierTriggerPending || self.keyboardTriggerDown || self.keyboardModifierState.down) {
+                self.modifierChording = YES;
+                self.modifierTriggerPending = NO;
+                self.modifierTriggerGeneration++;
+                if (self.keyboardTriggerDown) {
+                    self.keyboardTriggerDown = NO;
+                    Emit(@"keyboard_cancel_session", @{});
+                }
+            }
+            return NO;
+        }
+        if (eventKeyCode != code) return NO;
         KKModifierEvent edgeEvent;
         if (type == kCGEventFlagsChanged) edgeEvent = KKFlagsChanged;
         else if (type == kCGEventKeyDown) edgeEvent = KKKeyDown;
         else if (type == kCGEventKeyUp) edgeEvent = KKKeyUp;
         else return NO;
         KKModifierState modifierState = self.keyboardModifierState;
+        CGEventFlags eventFlags = CGEventGetFlags(event);
         KKModifierEdge edge = KKModifierObserve(&modifierState, code, eventKeyCode, edgeEvent,
-            CGEventGetFlags(event), false,
+            eventFlags, false,
             CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat) != 0);
         self.keyboardModifierState = modifierState;
         if (edge == KKModifierNone) return passThrough ? NO : self.keyboardTriggerDown;
         if (edge == KKModifierUp) {
+            self.modifierTriggerGeneration++;
+            if (self.modifierChording) {
+                self.modifierChording = NO;
+                self.modifierTriggerPending = NO;
+                self.keyboardTriggerDown = NO;
+                return NO;
+            }
+            if (self.modifierTriggerPending) {
+                self.modifierTriggerPending = NO;
+                // Ignore trailing modifier tap immediately after a scroll/pinch burst.
+                if (NSProcessInfo.processInfo.systemUptime - self.lastScrollOrGestureTime < 0.45) {
+                    return NO;
+                }
+                Emit(@"keyboard_trigger_down", @{@"passThrough": @(passThrough)});
+                Emit(@"keyboard_trigger_up", @{@"passThrough": @(passThrough)});
+                return !passThrough;
+            }
             BOOL wasDown = self.keyboardTriggerDown;
             if (wasDown) Emit(@"keyboard_trigger_up", @{@"passThrough": @(passThrough)});
             self.keyboardTriggerDown = NO;
             return wasDown && !passThrough;
         }
-        self.keyboardTriggerDown = YES;
-        Emit(@"keyboard_trigger_down", @{@"passThrough": @(passThrough)});
+        // Modifier down: ignore if inside a recent scroll/pinch-zoom burst (e.g. UU Remote).
+        if (NSProcessInfo.processInfo.systemUptime - self.lastScrollOrGestureTime < 0.45) {
+            self.modifierChording = YES;
+            self.modifierTriggerPending = NO;
+            return NO;
+        }
+        // Check if another modifier is already held (chord)
+        uint64_t ownAggregate = 0, ownSide = 0, ownGroup = 0;
+        KKModifierMasks(code, &ownAggregate, &ownSide, &ownGroup);
+        CGEventFlags allKnownModifiers = kCGEventFlagMaskControl | kCGEventFlagMaskShift
+            | kCGEventFlagMaskAlternate | kCGEventFlagMaskCommand | kCGEventFlagMaskSecondaryFn;
+        if ((eventFlags & (allKnownModifiers & ~ownAggregate)) != 0) {
+            self.modifierChording = YES;
+            self.modifierTriggerPending = NO;
+            return NO;
+        }
+        // Defer emitting keyboard_trigger_down briefly (220ms) so chords like
+        // Control+ScrollWheel (UU Remote pinch-to-zoom) or Control+C never wake the mic.
+        self.modifierChording = NO;
+        self.modifierTriggerPending = YES;
+        NSUInteger generation = ++self.modifierTriggerGeneration;
+        __weak RemoteHelper *weakSelf = self;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(220 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+            RemoteHelper *helper = weakSelf;
+            if (!helper || helper.stopped || !helper.modifierTriggerPending || helper.modifierTriggerGeneration != generation) return;
+            helper.modifierTriggerPending = NO;
+            helper.keyboardTriggerDown = YES;
+            Emit(@"keyboard_trigger_down", @{@"passThrough": @(passThrough)});
+        });
         return !passThrough;
     }
+    if (eventKeyCode != code) return NO;
     if (type == kCGEventKeyUp) {
         BOOL wasDown = self.keyboardTriggerDown;
         if (wasDown) Emit(@"keyboard_trigger_up", @{@"passThrough": @(passThrough)});

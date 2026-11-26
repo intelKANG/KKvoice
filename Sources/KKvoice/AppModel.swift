@@ -190,6 +190,23 @@ final class AppModel: ObservableObject {
     @Published var recordingFrames: Int = 0
     @Published var requiredPermission: String? = nil
     @Published var lastPressedButtonID: String? = nil
+    @Published var remoteBatteryLevel: Int? = nil
+
+    var isRemoteBatteryLow: Bool {
+        guard let level = remoteBatteryLevel else { return false }
+        return level <= 15
+    }
+
+    var remoteBatterySymbol: String {
+        guard let level = remoteBatteryLevel else { return "battery.0" }
+        switch level {
+        case 85...100: return "battery.100"
+        case 60..<85: return "battery.75"
+        case 35..<60: return "battery.50"
+        case 15..<35: return "battery.25"
+        default: return "battery.0"
+        }
+    }
 
     @Published var availableDevices: [KKAudioOutputDevice] = []
     @Published var selectedDeviceIndex: Int = 0
@@ -212,6 +229,8 @@ final class AppModel: ObservableObject {
     @Published var loginItemRequiresApproval: Bool = false
     @Published var appearanceMode: AppAppearanceMode = .system
     @Published var showMenuBarIcon: Bool = true
+    @Published var playRecordingSounds: Bool = true
+    @Published var recordingSoundTheme: RecordingSoundTheme = .crisp
 
     @Published var mappings: ButtonMappings
     @Published var quickNoteProvider: QuickNoteProvider = .appleNotes
@@ -255,6 +274,9 @@ final class AppModel: ObservableObject {
     let snapNoteMCPEndpointKey = "snapNoteMCPEndpoint"
     let snapNoteMCPPortKey = "snapNoteMCPPort"
     let showMenuBarIconKey = "showMenuBarIcon"
+    let playRecordingSoundsKey = "playRecordingSounds"
+    let recordingSoundThemeKey = "recordingSoundTheme"
+    private var suppressNextStopSound = false
     let hasEverConnectedRemoteKey = "hasEverConnectedRemote"
     let hasSeenIMEOnboardingGuideKey = "hasSeenIMEOnboardingGuide"
     private let mappingStore = ButtonMappingStore()
@@ -417,6 +439,13 @@ final class AppModel: ObservableObject {
         } else {
             self.showMenuBarIcon = UserDefaults.standard.bool(forKey: showMenuBarIconKey)
         }
+        if UserDefaults.standard.object(forKey: playRecordingSoundsKey) == nil {
+            self.playRecordingSounds = true
+        } else {
+            self.playRecordingSounds = UserDefaults.standard.bool(forKey: playRecordingSoundsKey)
+        }
+        self.recordingSoundTheme = UserDefaults.standard.string(forKey: recordingSoundThemeKey)
+            .flatMap(RecordingSoundTheme.init(rawValue:)) ?? .crisp
         self.hasEverConnectedRemote = UserDefaults.standard.bool(forKey: hasEverConnectedRemoteKey)
 
         let serviceStatus = SMAppService.mainApp.status
@@ -942,6 +971,24 @@ final class AppModel: ObservableObject {
         onMenuBarIconPreferenceChanged?(enabled)
     }
 
+    func setPlayRecordingSounds(_ enabled: Bool) {
+        playRecordingSounds = enabled
+        UserDefaults.standard.set(enabled, forKey: playRecordingSoundsKey)
+        if enabled {
+            SoundCuePlayer.shared.play(.start, theme: recordingSoundTheme)
+        }
+    }
+
+    func setRecordingSoundTheme(_ theme: RecordingSoundTheme) {
+        recordingSoundTheme = theme
+        UserDefaults.standard.set(theme.rawValue, forKey: recordingSoundThemeKey)
+        SoundCuePlayer.shared.play(.start, theme: theme)
+    }
+
+    func previewRecordingSound() {
+        SoundCuePlayer.shared.play(.start, theme: recordingSoundTheme)
+    }
+
     func setLaunchAtLogin(_ enabled: Bool) {
         do {
             if enabled { try SMAppService.mainApp.register() }
@@ -1320,6 +1367,10 @@ final class AppModel: ObservableObject {
             return InputApplicationAudioMonitor.isVokieCapturing(deviceUID: uid) == true
         }()
         if wasVoiceActive {
+            if isRecording && playRecordingSounds {
+                suppressNextStopSound = true
+                SoundCuePlayer.shared.play(.cancel, theme: recordingSoundTheme)
+            }
             voice.cancelWithoutSubmitting()
             syncVoicePhase()
         }
@@ -1412,9 +1463,14 @@ final class AppModel: ObservableObject {
                 statusText = hasEverConnectedRemote ? "遥控器离线（使用其他收音设备）" : "未发现遥控器"
                 connectionPhase = .standby
             }
+        case "battery_level":
+            if let level = message["level"] as? Int {
+                remoteBatteryLevel = min(100, max(0, level))
+            }
         case "ble_disconnected", "bluetooth_off":
             voice.setReady(false)
             voiceChannelReady = false
+            remoteBatteryLevel = nil
             statusText = hidConnected ? "语音通道已断开，正在重连…" : "蓝牙已断开"
             syncVoicePhase()
         case "hid_disconnected":
@@ -1422,6 +1478,7 @@ final class AppModel: ObservableObject {
             hidConnected = false
             voice.setReady(false)
             voiceChannelReady = false
+            remoteBatteryLevel = nil
             lastPressedButtonID = nil
             statusText = "遥控器已断开"
             syncVoicePhase()
@@ -1542,6 +1599,7 @@ final class AppModel: ObservableObject {
             isRemoteInStandby = false
             isRecording = false
             recordingFrames = 0
+            remoteBatteryLevel = nil
             lastPressedButtonID = nil
             if requiredPermission == nil {
                 connectionPhase = .disconnected
@@ -1588,8 +1646,21 @@ final class AppModel: ObservableObject {
                 nextPhase = .disconnected
             }
         }
+        let wasRecording = isRecording
         if isRecording != nextIsRecording {
             isRecording = nextIsRecording
+            if playRecordingSounds {
+                if nextIsRecording {
+                    suppressNextStopSound = false
+                    SoundCuePlayer.shared.play(.start, theme: recordingSoundTheme)
+                } else if wasRecording {
+                    if suppressNextStopSound {
+                        suppressNextStopSound = false
+                    } else {
+                        SoundCuePlayer.shared.play(.stop, theme: recordingSoundTheme)
+                    }
+                }
+            }
         }
         if connectionPhase != nextPhase {
             connectionPhase = nextPhase

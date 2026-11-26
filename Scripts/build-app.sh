@@ -55,6 +55,10 @@ fi
 ditto "$root/.build/KKvoiceRemoteHelper.app" "$contents/Resources/KKvoiceRemoteHelper.app"
 
 sign_identity="$(resolve_codesign_identity)"
+ts_flag="--timestamp=none"
+if [[ "${CODESIGN_TIMESTAMP:-0}" == "1" ]]; then
+  ts_flag="--timestamp"
+fi
 
 # Sign inside-out: 1) KKvoiceMic.driver -> 2) KKvoiceRemoteHelper.app -> 3) KKvoice.app
 if is_blackhole_built_driver "$driver_build"; then
@@ -62,7 +66,7 @@ if is_blackhole_built_driver "$driver_build"; then
   if [[ "$sign_identity" == "-" ]]; then
     codesign --force --deep --sign - --timestamp=none "$contents/Resources/KKvoiceMic.driver"
   else
-    codesign --force --deep --options runtime --timestamp=none --sign "$sign_identity" "$contents/Resources/KKvoiceMic.driver"
+    codesign --force --deep --options runtime "$ts_flag" --sign "$sign_identity" "$contents/Resources/KKvoiceMic.driver"
   fi
   codesign --verify --deep --strict "$contents/Resources/KKvoiceMic.driver"
 else
@@ -75,8 +79,8 @@ if [[ "$sign_identity" == "-" ]]; then
   codesign --force --sign - --timestamp=none --entitlements "$helper_entitlements" --requirements '=designated => identifier "local.kkvoice.remote-helper"' "$contents/Resources/KKvoiceRemoteHelper.app"
   codesign --force --sign - --timestamp=none --entitlements "$app_entitlements" --requirements '=designated => identifier "local.kkvoice.app"' "$app"
 else
-  codesign --force --options runtime --timestamp=none --entitlements "$helper_entitlements" --sign "$sign_identity" "$contents/Resources/KKvoiceRemoteHelper.app"
-  codesign --force --options runtime --timestamp=none --entitlements "$app_entitlements" --sign "$sign_identity" "$app"
+  codesign --force --options runtime "$ts_flag" --entitlements "$helper_entitlements" --sign "$sign_identity" "$contents/Resources/KKvoiceRemoteHelper.app"
+  codesign --force --options runtime "$ts_flag" --entitlements "$app_entitlements" --sign "$sign_identity" "$app"
 fi
 
 codesign --verify --deep --strict "$app"

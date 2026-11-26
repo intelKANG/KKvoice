@@ -168,6 +168,15 @@ final class KKvoiceAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             return
         }
         let menu = NSMenu()
+        if let level = model.remoteBatteryLevel {
+            let batteryTitle = model.isRemoteBatteryLow
+                ? "遥控器电量：\(level)%（电量偏低）"
+                : "遥控器电量：\(level)%"
+            let batteryItem = NSMenuItem(title: batteryTitle, action: nil, keyEquivalent: "")
+            batteryItem.isEnabled = false
+            menu.addItem(batteryItem)
+            menu.addItem(.separator())
+        }
         let show = NSMenuItem(title: "打开 KKvoice", action: #selector(showMainWindow), keyEquivalent: "")
         show.target = self
         menu.addItem(show)

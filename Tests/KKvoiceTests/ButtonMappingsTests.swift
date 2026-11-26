@@ -77,4 +77,58 @@ final class ButtonMappingsTests: XCTestCase {
         XCTAssertFalse(dispatcher.switcherActive)
     }
 
+    func testLongPressAndShortPressRoutingAndPersistence() throws {
+        let suite = "local.kkvoice.longpress.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ButtonMappingStore(defaults: defaults)
+
+        var mappings = ButtonMappings.defaults
+        mappings.buttons["08"] = .init(target: "mute")
+        mappings.doubleTapButtons["08"] = .init(target: "showDesktop")
+        mappings.longPressButtons["08"] = .init(target: "lockScreen")
+        try store.save(mappings)
+        let loaded = store.load()
+        XCTAssertEqual(loaded.doubleTapButtons["08"], .init(target: "showDesktop"))
+        XCTAssertEqual(loaded.longPressButtons["08"], .init(target: "lockScreen"))
+
+        var sentTargets: [String] = []
+        let dispatcher = ButtonActionDispatcher(
+            mappings: loaded,
+            send: { sentTargets.append($0["target"] as? String ?? "") },
+            cancelVoice: {},
+            status: { _ in },
+            longPressThreshold: 0.08,
+            doubleTapWindow: 0.06
+        )
+
+        // 1) Single tap (release quickly and wait past doubleTapWindow) -> fires "mute".
+        let singleExp = expectation(description: "single tap fired")
+        dispatcher.down("08")
+        dispatcher.up("08")
+        XCTAssertTrue(sentTargets.isEmpty)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) {
+            singleExp.fulfill()
+        }
+        wait(for: [singleExp], timeout: 1.0)
+        XCTAssertEqual(sentTargets, ["mute"])
+
+        // 2) Double tap (two quick presses within doubleTapWindow) -> fires "showDesktop" immediately on 2nd down.
+        dispatcher.down("08")
+        dispatcher.up("08")
+        dispatcher.down("08")
+        dispatcher.up("08")
+        XCTAssertEqual(sentTargets, ["mute", "showDesktop"])
+
+        // 3) Long press (hold past longPressThreshold) -> fires "lockScreen", release does not double-fire.
+        let longExp = expectation(description: "long press fired")
+        dispatcher.down("08")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            dispatcher.up("08")
+            longExp.fulfill()
+        }
+        wait(for: [longExp], timeout: 1.0)
+        XCTAssertEqual(sentTargets, ["mute", "showDesktop", "lockScreen"])
+    }
+
 }

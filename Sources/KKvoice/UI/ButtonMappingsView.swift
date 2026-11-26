@@ -4,9 +4,17 @@ import UniformTypeIdentifiers
 import VoiceSessions
 
 struct ButtonMappingsView: View {
+    private enum EditingGesture: String, CaseIterable, Identifiable {
+        case singleTap = "单击"
+        case doubleTap = "双击"
+        case longPress = "长按"
+        var id: String { rawValue }
+    }
+
     @ObservedObject var model: AppModel
     @State private var draft: ButtonMappings
     @State private var selectedButtonID: String
+    @State private var editingGesture: EditingGesture = .singleTap
     @State private var saveFeedback: String? = nil
 
     private let customShortcutChoice = "__shortcut"
@@ -64,8 +72,19 @@ struct ButtonMappingsView: View {
         VStack(spacing: 0) {
             PageScaffold(
                 title: "按键",
-                subtitle: nil,
-                scrollable: false
+                subtitle: "每个按键可同时配置单击、双击和长按动作，互不冲突",
+                scrollable: false,
+                headerAccessory: {
+                    Picker("", selection: $editingGesture) {
+                        ForEach(EditingGesture.allCases) { gesture in
+                            Text(gestureTabTitle(for: gesture)).tag(gesture)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 246)
+                    .help("点击切换正在编辑的手势层；单击、双击、长按可同时生效")
+                }
             ) {
                 VStack(alignment: .leading, spacing: DS.s12) {
                     switcherBannerCard
@@ -276,11 +295,69 @@ struct ButtonMappingsView: View {
         }
     }
 
+    private func gestureTabTitle(for gesture: EditingGesture) -> String {
+        switch gesture {
+        case .singleTap:
+            return "单击"
+        case .doubleTap:
+            let count = draft.doubleTapButtons.values.filter { $0.target != "none" }.count
+            return count > 0 ? "双击 · \(count)" : "双击"
+        case .longPress:
+            let count = draft.longPressButtons.values.filter { $0.target != "none" }.count
+            return count > 0 ? "长按 · \(count)" : "长按"
+        }
+    }
+
+    private func currentAction(for id: String) -> ButtonAction {
+        switch editingGesture {
+        case .singleTap:
+            return draft.buttons[id] ?? .none
+        case .doubleTap:
+            return draft.doubleTapButtons[id] ?? .none
+        case .longPress:
+            return draft.longPressButtons[id] ?? .none
+        }
+    }
+
+    private func setAction(_ action: ButtonAction, for id: String) {
+        switch editingGesture {
+        case .singleTap:
+            draft.buttons[id] = action
+        case .doubleTap:
+            if action.target == "none" {
+                draft.doubleTapButtons.removeValue(forKey: id)
+            } else {
+                draft.doubleTapButtons[id] = action
+            }
+        case .longPress:
+            if action.target == "none" {
+                draft.longPressButtons.removeValue(forKey: id)
+            } else {
+                draft.longPressButtons[id] = action
+            }
+        }
+    }
+
+    private func otherConfiguredGestureBadges(for id: String) -> [(short: String, full: String)] {
+        var badges: [(String, String)] = []
+        if editingGesture != .singleTap, let act = draft.buttons[id], act.target != "none" {
+            badges.append(("单", "已配置单击"))
+        }
+        if editingGesture != .doubleTap, let act = draft.doubleTapButtons[id], act.target != "none" {
+            badges.append(("双", "已配置双击"))
+        }
+        if editingGesture != .longPress, let act = draft.longPressButtons[id], act.target != "none" {
+            badges.append(("长", "已配置长按"))
+        }
+        return badges
+    }
+
     private func configurableButtonCard(for item: ButtonMeta, side: ColumnSide) -> some View {
         let isSelected = (selectedButtonID == item.id)
         let lockedBySwitcher = isSwitcherLocked(item.id)
-        let currentAction = draft.buttons[item.id] ?? .none
+        let currentAction = currentAction(for: item.id)
         let appInfo = lockedBySwitcher ? nil : resolvedApplication(for: currentAction)
+        let otherBadges = lockedBySwitcher ? [] : otherConfiguredGestureBadges(for: item.id)
 
         return Card(
             padding: 8,
@@ -299,6 +376,23 @@ struct ButtonMappingsView: View {
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
                     .layoutPriority(2)
+
+                if !otherBadges.isEmpty {
+                    HStack(spacing: 3) {
+                        ForEach(otherBadges, id: \.short) { badge in
+                            Text(badge.short)
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(Color.accentColor)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(Color.accentColor.opacity(0.13))
+                                )
+                                .help(badge.full)
+                        }
+                    }
+                }
 
                 Spacer(minLength: 4)
 
@@ -339,7 +433,7 @@ struct ButtonMappingsView: View {
 
     @ViewBuilder
     private func actionMenu(for id: String, lockedBySwitcher: Bool) -> some View {
-        let action = draft.buttons[id] ?? .none
+        let action = currentAction(for: id)
         let desired = desiredMenuChoice(for: action)
         let summary = lockedBySwitcher ? "切换应用" : actionSummary(for: id)
         let appInfo = resolvedApplication(for: action)
@@ -595,7 +689,7 @@ struct ButtonMappingsView: View {
     }
 
     func actionSummary(for id: String) -> String {
-        let action = draft.buttons[id] ?? .none
+        let action = currentAction(for: id)
         let desired = desiredMenuChoice(for: action)
         switch desired {
         case customShortcutChoice:
@@ -617,23 +711,24 @@ struct ButtonMappingsView: View {
 
     private func selectMenuOption(choice: String, for id: String) {
         selectedButtonID = id
+        let existing = currentAction(for: id)
         var replacement: ButtonAction?
         switch choice {
         case customShortcutChoice:
-            replacement = promptShortcut(previous: draft.buttons[id])
+            replacement = promptShortcut(previous: existing)
         case chooseAppChoice:
             replacement = promptApplication()
         case chooseFileChoice:
             replacement = promptFile()
         case typeTextChoice:
-            replacement = promptText(previous: draft.buttons[id]?.text)
+            replacement = promptText(previous: existing.text)
         case snapnoteChoice:
             replacement = ButtonAction(target: "snapnoteNewNote")
         default:
             replacement = ButtonAction(target: choice)
         }
         if let replacement, ActionCatalog.isValid(replacement) {
-            draft.buttons[id] = replacement
+            setAction(replacement, for: id)
             saveFeedback = nil
         }
     }

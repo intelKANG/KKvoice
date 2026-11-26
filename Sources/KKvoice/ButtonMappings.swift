@@ -24,6 +24,36 @@ struct ButtonAction: Codable, Equatable {
 struct ButtonMappings: Codable, Equatable {
     var appSwitcherNavigation: Bool
     var buttons: [String: ButtonAction]
+    var doubleTapButtons: [String: ButtonAction]
+    var longPressButtons: [String: ButtonAction]
+
+    init(
+        appSwitcherNavigation: Bool,
+        buttons: [String: ButtonAction],
+        doubleTapButtons: [String: ButtonAction] = [:],
+        longPressButtons: [String: ButtonAction] = [:]
+    ) {
+        self.appSwitcherNavigation = appSwitcherNavigation
+        self.buttons = buttons
+        self.doubleTapButtons = doubleTapButtons
+        self.longPressButtons = longPressButtons
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case appSwitcherNavigation
+        case buttons
+        case doubleTapButtons
+        case longPressButtons
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.appSwitcherNavigation = try container.decode(Bool.self, forKey: .appSwitcherNavigation)
+        self.buttons = try container.decode([String: ButtonAction].self, forKey: .buttons)
+        self.doubleTapButtons = try container.decodeIfPresent([String: ButtonAction].self, forKey: .doubleTapButtons) ?? [:]
+        self.longPressButtons = try container.decodeIfPresent([String: ButtonAction].self, forKey: .longPressButtons) ?? [:]
+    }
+
     static let defaults = ButtonMappings(appSwitcherNavigation: true, buttons: [
         "03": .init(target: "arrowUp"), "04": .init(target: "arrowDown"),
         "05": .init(target: "arrowLeft"), "06": .init(target: "arrowRight"),
@@ -32,7 +62,7 @@ struct ButtonMappings: Codable, Equatable {
         "08": .init(target: "mute"), "0F": .none,
         "01": .init(target: "lockScreen"), "11": .none,
         "0C": .init(target: "volumeUp"), "0D": .init(target: "volumeDown")
-    ])
+    ], doubleTapButtons: [:], longPressButtons: [:])
 }
 
 struct ButtonMappingStore {
@@ -46,12 +76,27 @@ struct ButtonMappingStore {
         result.appSwitcherNavigation = saved.appSwitcherNavigation
         for button in RemoteButton.all {
             if let action = saved.buttons[button.id], ActionCatalog.isValid(action) { result.buttons[button.id] = action }
+            if let doubleAction = saved.doubleTapButtons[button.id],
+               doubleAction.target != "none",
+               ActionCatalog.isValid(doubleAction) {
+                result.doubleTapButtons[button.id] = doubleAction
+            }
+            if let longAction = saved.longPressButtons[button.id],
+               longAction.target != "none",
+               ActionCatalog.isValid(longAction) {
+                result.longPressButtons[button.id] = longAction
+            }
         }
         return result
     }
     func save(_ mappings: ButtonMappings) throws {
-        guard Set(mappings.buttons.keys).isSubset(of: Set(RemoteButton.all.map(\.id))),
-              mappings.buttons.values.allSatisfy(ActionCatalog.isValid) else { throw MappingError.invalid }
+        let validIDs = Set(RemoteButton.all.map(\.id))
+        guard Set(mappings.buttons.keys).isSubset(of: validIDs),
+              Set(mappings.doubleTapButtons.keys).isSubset(of: validIDs),
+              Set(mappings.longPressButtons.keys).isSubset(of: validIDs),
+              mappings.buttons.values.allSatisfy(ActionCatalog.isValid),
+              mappings.doubleTapButtons.values.allSatisfy(ActionCatalog.isValid),
+              mappings.longPressButtons.values.allSatisfy(ActionCatalog.isValid) else { throw MappingError.invalid }
         defaults.set(try JSONEncoder().encode(mappings), forKey: key)
     }
 }
@@ -127,7 +172,13 @@ enum ActionCatalog {
 final class ButtonActionDispatcher {
     var mappings: ButtonMappings
     var switcherActive = false
+    var longPressThreshold: TimeInterval
+    var doubleTapWindow: TimeInterval
     private var pressed: Set<String> = []
+    private var pendingHoldWorkItems: [String: DispatchWorkItem] = [:]
+    private var pendingSingleTapWorkItems: [String: DispatchWorkItem] = [:]
+    private var deferredShortPressButtons: Set<String> = []
+    private var firedGestureButtons: Set<String> = []
     private let send: ([String: Any]) throws -> Void
     private let sendShortcut: (ShortcutDefinition) throws -> Void
     private let cancelVoice: () -> Void
@@ -136,11 +187,24 @@ final class ButtonActionDispatcher {
 
     init(mappings: ButtonMappings, send: @escaping ([String: Any]) throws -> Void,
          sendShortcut: @escaping (ShortcutDefinition) throws -> Void = { try SystemShortcutSender.send($0.systemShortcut) },
-         cancelVoice: @escaping () -> Void, status: @escaping (String) -> Void) {
+         cancelVoice: @escaping () -> Void, status: @escaping (String) -> Void,
+         longPressThreshold: TimeInterval = 0.45,
+         doubleTapWindow: TimeInterval = 0.28) {
         self.mappings = mappings; self.send = send; self.sendShortcut = sendShortcut; self.cancelVoice = cancelVoice; self.status = status
+        self.longPressThreshold = longPressThreshold
+        self.doubleTapWindow = doubleTapWindow
         self.createSnapNote = { status("未配置快速笔记") }
     }
-    func reset() { pressed.removeAll(); switcherActive = false }
+    func reset() {
+        for item in pendingHoldWorkItems.values { item.cancel() }
+        for item in pendingSingleTapWorkItems.values { item.cancel() }
+        pendingHoldWorkItems.removeAll()
+        pendingSingleTapWorkItems.removeAll()
+        deferredShortPressButtons.removeAll()
+        firedGestureButtons.removeAll()
+        pressed.removeAll()
+        switcherActive = false
+    }
     func deviceDisconnected() {
         if switcherActive {
             do { try send(["type": "app_switcher_cancel"]) }
@@ -148,17 +212,74 @@ final class ButtonActionDispatcher {
         }
         reset()
     }
-    func up(_ button: String) { pressed.remove(button) }
+    func up(_ button: String) {
+        let wasPressed = pressed.remove(button) != nil
+        pendingHoldWorkItems.removeValue(forKey: button)?.cancel()
+        let wasDeferred = deferredShortPressButtons.remove(button) != nil
+        if firedGestureButtons.remove(button) != nil {
+            return
+        }
+        guard wasPressed, wasDeferred else { return }
+        if let doubleAction = mappings.doubleTapButtons[button], doubleAction.target != "none" {
+            let shortAction = mappings.buttons[button] ?? .none
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.pendingSingleTapWorkItems.removeValue(forKey: button)
+                self.execute(action: shortAction, for: button)
+            }
+            pendingSingleTapWorkItems[button]?.cancel()
+            pendingSingleTapWorkItems[button] = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + doubleTapWindow, execute: work)
+        } else {
+            let shortAction = mappings.buttons[button] ?? .none
+            execute(action: shortAction, for: button)
+        }
+    }
     func down(_ button: String) {
         guard RemoteButton.all.contains(where: { $0.id == button }), pressed.insert(button).inserted else { return }
-        let action = mappings.buttons[button] ?? .none
-        guard ActionCatalog.isValid(action) else { status("按键设置无效") ; return }
-        do {
-            if mappings.appSwitcherNavigation && (button == "05" || button == "06") {
+        if mappings.appSwitcherNavigation && (button == "05" || button == "06") {
+            do {
                 try send(["type": "post_key", "target": button == "05" ? "appSwitcherLeft" : "appSwitcherRight"])
                 switcherActive = true
-                return
+            } catch { status("按键发送失败：\(error.localizedDescription)") }
+            return
+        }
+        // Second press within doubleTapWindow -> immediately fire double-tap action!
+        if let pendingSingle = pendingSingleTapWorkItems.removeValue(forKey: button) {
+            pendingSingle.cancel()
+            firedGestureButtons.insert(button)
+            if let doubleAction = mappings.doubleTapButtons[button], doubleAction.target != "none" {
+                execute(action: doubleAction, for: button)
             }
+            return
+        }
+        let longAction = mappings.longPressButtons[button].flatMap { $0.target == "none" ? nil : $0 }
+        let doubleAction = mappings.doubleTapButtons[button].flatMap { $0.target == "none" ? nil : $0 }
+        if let longAction {
+            guard ActionCatalog.isValid(longAction) else { status("按键设置无效"); return }
+            deferredShortPressButtons.insert(button)
+            let work = DispatchWorkItem { [weak self] in
+                guard let self, self.pressed.contains(button) else { return }
+                self.pendingHoldWorkItems.removeValue(forKey: button)
+                self.deferredShortPressButtons.remove(button)
+                self.firedGestureButtons.insert(button)
+                self.execute(action: longAction, for: button)
+            }
+            pendingHoldWorkItems[button] = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + longPressThreshold, execute: work)
+            return
+        }
+        if doubleAction != nil {
+            deferredShortPressButtons.insert(button)
+            return
+        }
+        let action = mappings.buttons[button] ?? .none
+        execute(action: action, for: button)
+    }
+
+    private func execute(action: ButtonAction, for button: String) {
+        guard ActionCatalog.isValid(action) else { status("按键设置无效"); return }
+        do {
             if switcherActive && action.target != "none" && !["sendEnter", "cancelRecording", "appSwitcher", "arrowLeft", "arrowRight"].contains(action.target) {
                 try send(["type": "app_switcher_cancel"])
                 switcherActive = false

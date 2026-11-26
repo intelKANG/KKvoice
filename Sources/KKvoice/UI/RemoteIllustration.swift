@@ -623,12 +623,15 @@ struct RemoteIllustration: View {
     }
 
     private var bodyGradient: LinearGradient {
+        // The physical Chromecast with Google TV remote is snow-white pearl plastic;
+        // in dark mode we keep it crisp matte pearl-white (slightly softened so it
+        // harmonizes with dark surfaces without ever turning black).
         if colorScheme == .dark {
             return LinearGradient(
                 colors: [
-                    Color(red: 0.22, green: 0.24, blue: 0.28),
-                    Color(red: 0.16, green: 0.18, blue: 0.21),
-                    Color(red: 0.13, green: 0.14, blue: 0.17)
+                    Color(red: 0.94, green: 0.945, blue: 0.955),
+                    Color(red: 0.895, green: 0.902, blue: 0.918),
+                    Color(red: 0.845, green: 0.855, blue: 0.875)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -649,9 +652,9 @@ struct RemoteIllustration: View {
     private var bodyRimGradient: LinearGradient {
         LinearGradient(
             colors: [
-                Color.white.opacity(colorScheme == .dark ? 0.20 : 0.90),
-                Color.white.opacity(colorScheme == .dark ? 0.04 : 0.25),
-                Color.black.opacity(colorScheme == .dark ? 0.35 : 0.06)
+                Color.white.opacity(colorScheme == .dark ? 0.85 : 0.90),
+                Color.white.opacity(colorScheme == .dark ? 0.25 : 0.25),
+                Color.black.opacity(colorScheme == .dark ? 0.16 : 0.06)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -660,7 +663,7 @@ struct RemoteIllustration: View {
 
     private var bodyOuterBorder: Color {
         colorScheme == .dark
-            ? Color.white.opacity(0.12)
+            ? Color.white.opacity(0.28)
             : Color.black.opacity(0.13)
     }
 
@@ -668,8 +671,8 @@ struct RemoteIllustration: View {
         if colorScheme == .dark {
             return LinearGradient(
                 colors: [
-                    Color(red: 0.19, green: 0.21, blue: 0.25),
-                    Color(red: 0.24, green: 0.26, blue: 0.30)
+                    Color(red: 0.89, green: 0.898, blue: 0.912),
+                    Color(red: 0.945, green: 0.95, blue: 0.96)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -688,19 +691,19 @@ struct RemoteIllustration: View {
 
     private func dpadCenterFill(hovered: Bool) -> Color {
         if hovered {
-            return Color.accentColor.opacity(0.12)
+            return Color.accentColor.opacity(0.14)
         }
         return colorScheme == .dark
-            ? Color(red: 0.22, green: 0.24, blue: 0.28)
+            ? Color(red: 0.93, green: 0.938, blue: 0.95)
             : Color(red: 0.975, green: 0.98, blue: 0.985)
     }
 
     private func surfaceButtonFill(hovered: Bool) -> Color {
         if hovered {
-            return Color.accentColor.opacity(0.10)
+            return Color.accentColor.opacity(0.12)
         }
         return colorScheme == .dark
-            ? Color(red: 0.23, green: 0.25, blue: 0.29)
+            ? Color(red: 0.94, green: 0.946, blue: 0.958)
             : Color(red: 0.985, green: 0.987, blue: 0.992)
     }
 
@@ -708,8 +711,8 @@ struct RemoteIllustration: View {
         if colorScheme == .dark {
             return LinearGradient(
                 colors: [
-                    Color(red: 0.11, green: 0.12, blue: 0.15),
-                    Color(red: 0.16, green: 0.18, blue: 0.21)
+                    Color(red: 0.80, green: 0.81, blue: 0.835),
+                    Color(red: 0.885, green: 0.892, blue: 0.908)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -728,20 +731,18 @@ struct RemoteIllustration: View {
 
     private var sideRockerFill: Color {
         colorScheme == .dark
-            ? Color(red: 0.27, green: 0.29, blue: 0.34)
+            ? Color(red: 0.80, green: 0.81, blue: 0.835)
             : Color(red: 0.86, green: 0.87, blue: 0.89)
     }
 
     private var buttonStrokeColor: Color {
         colorScheme == .dark
-            ? Color.white.opacity(0.22)
+            ? Color.black.opacity(0.24)
             : Color.black.opacity(0.28)
     }
 
     private var buttonGlyphColor: Color {
-        colorScheme == .dark
-            ? Color(red: 0.93, green: 0.94, blue: 0.96)
-            : Color(red: 0.10, green: 0.11, blue: 0.13)
+        Color(red: 0.10, green: 0.11, blue: 0.13)
     }
 }
 

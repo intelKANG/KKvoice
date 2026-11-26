@@ -49,6 +49,22 @@ struct ConnectionView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                     Spacer()
+                    if let level = model.remoteBatteryLevel {
+                        HStack(spacing: 4) {
+                            Image(systemName: model.remoteBatterySymbol)
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("\(level)%")
+                                .font(.caption.monospacedDigit().weight(.medium))
+                        }
+                        .foregroundStyle(model.isRemoteBatteryLow ? Color.orange : Color.secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(model.isRemoteBatteryLow ? Color.orange.opacity(0.14) : DS.subtleFill)
+                        )
+                        .help(model.isRemoteBatteryLow ? "遥控器电量偏低（\(level)%），建议尽快更换电池" : "遥控器电量 \(level)%")
+                    }
                 }
 
                 ZStack {
