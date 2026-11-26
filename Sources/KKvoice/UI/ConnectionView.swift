@@ -4,6 +4,7 @@ import VoiceSessions
 
 struct ConnectionView: View {
     @ObservedObject var model: AppModel
+    @State private var showBatteryInfoPopover: Bool = false
 
     private static let controlColumnWidth: CGFloat = 240
     private static let refreshButtonWidth: CGFloat = 28
@@ -55,6 +56,9 @@ struct ConnectionView: View {
                                 .font(.system(size: 12, weight: .semibold))
                             Text("\(level)%")
                                 .font(.caption.monospacedDigit().weight(.medium))
+                            Image(systemName: "questionmark.circle")
+                                .font(.system(size: 10, weight: .medium))
+                                .opacity(0.65)
                         }
                         .foregroundStyle(model.isRemoteBatteryLow ? Color.orange : Color.secondary)
                         .padding(.horizontal, 7)
@@ -63,7 +67,35 @@ struct ConnectionView: View {
                             Capsule(style: .continuous)
                                 .fill(model.isRemoteBatteryLow ? Color.orange.opacity(0.14) : DS.subtleFill)
                         )
-                        .help(model.isRemoteBatteryLow ? "遥控器电量偏低（\(level)%），建议尽快更换电池" : "遥控器电量 \(level)%")
+                        .contentShape(Capsule(style: .continuous))
+                        .onHover { hovering in
+                            showBatteryInfoPopover = hovering
+                        }
+                        .onTapGesture {
+                            showBatteryInfoPopover.toggle()
+                        }
+                        .popover(isPresented: $showBatteryInfoPopover, arrowEdge: .top) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: model.remoteBatterySymbol)
+                                        .foregroundStyle(model.isRemoteBatteryLow ? Color.orange : Color.accentColor)
+                                    Text(model.isRemoteBatteryLow ? "遥控器电量偏低" : "遥控器电量说明")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                }
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text("• 数值直接来自遥控器蓝牙实时上报")
+                                    Text("• 遥控器按电压分档估算，普通 7 号干电池前期掉压慢，长时间显示 100% 属正常")
+                                    Text("• 若使用 1.5V 恒压充电锂电，因全程稳压会一直显示 100%，临近耗尽时才会骤降")
+                                    Text("• 电量低于 15% 时会自动提醒更换电池")
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(12)
+                            .frame(width: 262, alignment: .leading)
+                        }
                     }
                 }
 
